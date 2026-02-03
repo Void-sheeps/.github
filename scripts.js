@@ -230,14 +230,15 @@ function addTerminalLog(message) {
 
 function getCompilationMessages() {
   const normalMessages = [
-    'gcc -c main.c -o main.o',
-    'gcc -c utils.c -o utils.o', 
-    'gcc -c network.c -o network.o',
-    'linking object files...',
-    'optimizing -O2 flags enabled',
+    'ghc -c DictionaryTransform.hs -o DictionaryTransform.o',
+    'ghc -c ImageticLanguage.hs -o ImageticLanguage.o',
+    'linking modules...',
+    'Dictionary Verification: Passed',
+    'Fermi-Dirac symmetry: Verified (1.0)',
+    'calculating Imagetic Association...',
+    'Context Vector Calculation: Success',
+    'applying Ratio Sine Qualia transformation...',
     'stripping debug symbols',
-    'checking dependencies',
-    'compressing with UPX',
     'digital signature applied'
   ];
   
@@ -370,11 +371,25 @@ Session ID: ${generateHash(16)}
 Download Type: Compiled Binary
 
 === COMPILATION STATUS ===
-✓ Source Code Compilation: Success
+✓ Source Code Compilation: Success (ghc)
 ✓ Library Linking: Complete
+✓ Dictionary Verification: Passed
+✓ Fermi-Dirac Symmetry: Verified (1.0)
 ✓ Binary Optimization: Applied
 ✓ Security Scan: Passed
 ✓ VirusTotal: 0/67 engines detected threats
+
+=== TRANSFORMED DICTIONARY ===
+MESA, JANELA, PEDRA, CAMINHO, CHUVA, PEIXE, MONTANHA, LIVRO, FOGO,
+SOMBRA, AREIA, VENTO, CASA, FOLHA, RIO, CADEIRA, SOL, NOITE, FRUTA,
+ESPELHO, PORTA, ESTRADA, COPO, ÁRVORE, RELÓGIO
+
+=== IMAGETIC CONTEXT REPORT ===
+Base Word: mesa
+Associated Images:
+- cadeira (weight: 0.8) -> [0.9, 0.3, 0.1]
+- janela (weight: 0.2) -> [0.2, 1.0, 0.4]
+Resulting Context Vector: [1.76, 0.64, 0.16]
 
 === SYSTEM INFORMATION ===
 User Agent: ${navigator.userAgent}
