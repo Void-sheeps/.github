@@ -235,6 +235,7 @@ function getCompilationMessages() {
     'ghc -c MultilinearAlgebra/Structural.hs -o MultilinearAlgebra/Structural.o',
     'ghc -c MultilinearAlgebra/Structural/Serialization.hs -o MultilinearAlgebra/Structural/Serialization.o',
     'ghc -c MultilinearAlgebra/Algorithms/Search.hs -o MultilinearAlgebra/Algorithms/Search.o',
+    'ghc -c Main.hs -o Main.o',
     'linking modules...',
     'Dictionary Verification: Passed',
     'Fermi-Dirac symmetry: Verified (1.0)',
