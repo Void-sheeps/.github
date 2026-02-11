@@ -237,6 +237,7 @@ function getCompilationMessages() {
     'ghc -c MultilinearAlgebra/Algorithms/Search.hs -o MultilinearAlgebra/Algorithms/Search.o',
     'ghc -c Main.hs -o Main.o',
     '6502-asm Estabilizacao -o Estabilizacao.bin',
+    'xc16-gcc MapaOntologico_dsPIC.s -o MapaOntologico_dsPIC.elf',
     'pwsh MapaOntologico.ps1 -Initialize',
     'nasm -felf64 mapa_ontologico_x64_alinhado.asm -o mapa.o',
     'gcc -no-pie mapa.o -o mapa',
