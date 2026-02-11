@@ -241,6 +241,7 @@ function getCompilationMessages() {
     'pwsh MapaOntologico.ps1 -Initialize',
     'nasm -felf64 mapa_ontologico_x64_alinhado.asm -o mapa.o',
     'gcc -no-pie mapa.o -o mapa',
+    'node mapa_ontologico_refinado.js --validate',
     'linking modules...',
     'Dictionary Verification: Passed',
     'Fermi-Dirac symmetry: Verified (1.0)',
