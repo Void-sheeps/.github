@@ -238,6 +238,8 @@ function getCompilationMessages() {
     'ghc -c Main.hs -o Main.o',
     '6502-asm Estabilizacao -o Estabilizacao.bin',
     'pwsh MapaOntologico.ps1 -Initialize',
+    'nasm -felf64 mapa_ontologico_x64_alinhado.asm -o mapa.o',
+    'gcc -no-pie mapa.o -o mapa',
     'linking modules...',
     'Dictionary Verification: Passed',
     'Fermi-Dirac symmetry: Verified (1.0)',
