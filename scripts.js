@@ -245,6 +245,9 @@ function getCompilationMessages() {
     'node linear_topo_refined.js --validate',
     'node resilient_topo_system.js --validate',
     'node resilient_tree_dag.js --validate',
+    'node entropy_dual_operator.js --validate',
+    'node symbolic_map.js --validate',
+    'node onto_const.js --validate',
     'linking modules...',
     'Dictionary Verification: Passed',
     'Fermi-Dirac symmetry: Verified (1.0)',
@@ -325,7 +328,7 @@ function startProgressAnimation() {
   showProgressBar();
   
   state.progressInterval = setInterval(() => {
-    const increment = Math.random() * 5 + 2; // 2-7% increment
+    const increment = Math.random() * 2 + 0.5; // 0.5-2.5% increment (slower for verification)
     const newProgress = Math.min(100, state.progress + increment);
     updateProgress(Math.floor(newProgress));
     
@@ -334,7 +337,7 @@ function startProgressAnimation() {
       state.progressInterval = null;
       setTimeout(() => completeDownload(), 800);
     }
-  }, 200);
+  }, 300); // 300ms interval
 }
 
 async function completeDownload() {
@@ -449,16 +452,16 @@ function simulateDownloadProcess() {
   
   setTimeout(() => {
     updateStatus('preparing', 'Compiling source files...');
-  }, 2000);
+  }, 3000); // Slower
   
   setTimeout(() => {
     updateStatus('preparing', 'Linking dependencies and libraries...');
-  }, 4000);
+  }, 7000); // Slower
   
   setTimeout(() => {
     updateStatus('downloading', 'Upload complete, starting download...');
     startProgressAnimation();
-  }, 6500);
+  }, 12000); // Slower
 }
 
 function handleRetry() {
