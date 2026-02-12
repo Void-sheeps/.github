@@ -245,6 +245,7 @@ function getCompilationMessages() {
     'node linear_topo_refined.js --validate',
     'node resilient_topo_system.js --validate',
     'node resilient_tree_dag.js --validate',
+    'node entropy_dual_operator.js --validate',
     'linking modules...',
     'Dictionary Verification: Passed',
     'Fermi-Dirac symmetry: Verified (1.0)',
