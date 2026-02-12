@@ -37,25 +37,51 @@
   .back-btn:hover {
     background: #30363d;
   }
+
+  .legend {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    background: rgba(48, 54, 61, 0.8);
+    padding: 12px;
+    border-radius: 6px;
+    border: 1px solid #30363d;
+    font-size: 12px;
+    pointer-events: none;
+  }
+  .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .legend-color { width: 12px; height: 12px; border-radius: 2px; }
 </style>
 </head>
 <body>
 <a href="index.html" class="back-btn">← Back to Download</a>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-color" style="background: #FFD700;"></div> Selected / Target</div>
+  <div class="legend-item"><div class="legend-color" style="background: #FF4136;"></div> Influenced (Direct)</div>
+  <div class="legend-item"><div class="legend-color" style="background: #1E90FF;"></div> Influencers</div>
+  <div class="legend-item"><div class="legend-color" style="background: #FFDC00;"></div> Critical (Watchdog)</div>
+</div>
+
 <svg id="network"></svg>
+
 <script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="silicium_core.js"></script>
 <script>
   // ======================
   // 50 threat nodes (simulados)
   // ======================
   const nodes = [];
   for(let i=1;i<=50;i++){
-    nodes.push({
+    const node = {
       id:`T${i}`,
       phi:parseFloat((0.65 + Math.random()*0.20).toFixed(2)),
-      H:parseFloat((0.60 + Math.random()*0.20).toFixed(2)),
+      h:parseFloat((0.60 + Math.random()*0.20).toFixed(2)),
       influence:[...Array(3)].map(()=>Math.floor(Math.random()*50)),
       phrase:`Threat concept #${i} simulation`
-    });
+    };
+    SiliciumCore.calculateMetrics(node);
+    nodes.push(node);
   }
 
   // ======================
@@ -69,13 +95,6 @@
       }
     });
   });
-
-  // ======================
-  // Calcular centralidade e top 10
-  // ======================
-  nodes.forEach(t=>{ t.centrality = t.phi * t.H * (1 + t.influence.length); });
-  const top10 = [...nodes].sort((a,b)=>b.centrality-a.centrality).slice(0,10);
-  const topIds = new Set(top10.map(n=>n.id));
 
   // ======================
   // D3 Force Simulation
@@ -96,34 +115,49 @@
     .join("line")
     .attr("stroke-width",1.5);
 
-  const node = svg.append("g")
-    .selectAll("circle")
+  const nodeGroup = svg.append("g")
+    .selectAll("g")
     .data(nodes)
-    .join("circle")
-    .attr("r", d=>d.phi*20)
-    .attr("fill", d=>d3.interpolateViridis(d.H))
-    .attr("stroke", d=>topIds.has(d.id) ? "#FF4136" : "#111")
-    .attr("stroke-width", d=>topIds.has(d.id)?3:0.5)
+    .join("g")
     .call(d3.drag()
       .on("start", dragstarted)
       .on("drag", dragged)
       .on("end", dragended));
 
-  const labels = svg.append("g")
-    .selectAll("text")
-    .data(nodes)
-    .join("text")
-    .text(d=>d.id);
+  const nodeCircle = nodeGroup.append("circle")
+    .attr("r", d=>d.phi*20)
+    .attr("fill", d=>d3.interpolateViridis(d.h))
+    .attr("stroke", "#111")
+    .attr("stroke-width", 0.5);
 
-  node.append("title")
-    .text(d=>`${d.id}: ${d.phrase}\nΦ:${d.phi}, H:${d.H}, Centrality:${d.centrality.toFixed(3)}`);
+  const labels = nodeGroup.append("text")
+    .text(d=>d.id)
+    .attr("x", 8)
+    .attr("y", 4);
+
+  nodeCircle.append("title")
+    .text(d=>`${d.id}: ${d.phrase}\nΦ:${d.phi.toFixed(2)}, H:${d.h.toFixed(2)}, Centrality:${d.centrality.toFixed(3)}`);
 
   // ======================
-  // Propagação de risco em tempo real (click)
+  // Interação: Immunitas (Neutralização) no click
   // ======================
-  node.on("click", function(event, d){
+  nodeCircle.on("click", function(event, d){
+    SiliciumCore.applyImmunitas(nodes, d.id);
     highlightPropagation(d);
+    updateVisuals();
   });
+
+  function updateVisuals() {
+    nodeCircle.transition().duration(300)
+      .attr("r", d => d.phi * 20)
+      .attr("fill", d => {
+        if (d.status === "NEUTRALIZED") return "#AAA";
+        return d3.interpolateViridis(d.h);
+      });
+
+    nodeCircle.select("title")
+      .text(d=>`${d.id}: ${d.phrase}\nΦ:${d.phi.toFixed(2)}, H:${d.h.toFixed(2)}, Centrality:${d.centrality.toFixed(3)}\nStatus: ${d.status}`);
+  }
 
   function highlightPropagation(d){
     const influenced = new Set();
@@ -132,11 +166,12 @@
       if(l.source.id === d.id) influenced.add(l.target.id);
       if(l.target.id === d.id) influencers.add(l.source.id);
     });
-    node.attr("fill", n=>{
+    nodeCircle.attr("fill", n=>{
       if(n.id===d.id) return "#FFD700";       // nó clicado
       if(influenced.has(n.id)) return "#FF4136"; // nós influenciados
       if(influencers.has(n.id)) return "#1E90FF"; // nós influenciadores
-      return d3.interpolateViridis(n.H);       // outros
+      if(n.status === "NEUTRALIZED") return "#AAA";
+      return d3.interpolateViridis(n.h);       // outros
     });
     link.attr("stroke", l=>{
       if(l.source.id===d.id || l.target.id===d.id) return "#FFF";
@@ -151,25 +186,33 @@
   // Watchdog: realça automaticamente nós críticos
   // ======================
   function watchdog(){
-    const thresholdCentrality = 2.6; // valor crítico
+    const scan = SiliciumCore.runWatchdog(nodes);
+
     nodes.forEach(n=>{
-      if(n.centrality >= thresholdCentrality){
+      if(n.status === "CRITICAL"){
         // pulso visual
-        node.filter(d=>d.id===n.id)
+        nodeCircle.filter(d=>d.id===n.id)
           .transition()
           .duration(500)
           .attr("stroke","#FFDC00")
           .attr("stroke-width",5)
           .transition()
           .duration(500)
-          .attr("stroke",topIds.has(n.id) ? "#FF4136" : "#111")
-          .attr("stroke-width",topIds.has(n.id)?3:0.5);
+          .attr("stroke","#111")
+          .attr("stroke-width",0.5);
       }
     });
   }
 
-  // Executa watchdog a cada 2 segundos
   setInterval(watchdog, 2000);
+
+  // ======================
+  // Simulação Temporal (Inércia Lógica)
+  // ======================
+  setInterval(() => {
+    SiliciumCore.processTimeStep(nodes);
+    updateVisuals();
+  }, 1000);
 
   // ======================
   // Tick function
@@ -179,10 +222,7 @@
         .attr("y1",d=>d.source.y)
         .attr("x2",d=>d.target.x)
         .attr("y2",d=>d.target.y);
-    node.attr("cx",d=>d.x)
-        .attr("cy",d=>d.y);
-    labels.attr("x", d=>d.x+5)
-          .attr("y", d=>d.y+5);
+    nodeGroup.attr("transform", d => `translate(${d.x},${d.y})`);
   });
 
   function dragstarted(event,d){

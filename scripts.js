@@ -246,6 +246,7 @@ function getCompilationMessages() {
     'node resilient_topo_system.js --validate',
     'node resilient_tree_dag.js --validate',
     'node entropy_dual_operator.js --validate',
+    'node silicium_core.js --validate',
     'node symbolic_map.js --validate',
     'node onto_const.js --validate',
     'linking modules...',
