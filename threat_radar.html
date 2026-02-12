@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Threat Radar with Watchdog</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --background: #0d1117;
+    --foreground: #c9d1d9;
+    --primary: #2f81f7;
+  }
+  body {
+    margin:0;
+    font-family: 'Inter', sans-serif;
+    background: var(--background);
+    color: var(--foreground);
+    overflow: hidden;
+  }
+  svg { width:100vw; height:100vh; }
+  text { fill:#fff; font-size:10px; pointer-events:none; font-family: 'JetBrains Mono', monospace; }
+
+  .back-btn {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    padding: 8px 16px;
+    background: rgba(48, 54, 61, 0.8);
+    color: var(--foreground);
+    text-decoration: none;
+    border-radius: 6px;
+    border: 1px solid #30363d;
+    font-size: 14px;
+    z-index: 100;
+    transition: background 0.2s;
+  }
+  .back-btn:hover {
+    background: #30363d;
+  }
+
+  .legend {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    background: rgba(48, 54, 61, 0.8);
+    padding: 12px;
+    border-radius: 6px;
+    border: 1px solid #30363d;
+    font-size: 12px;
+    pointer-events: none;
+  }
+  .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .legend-color { width: 12px; height: 12px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<a href="index.html" class="back-btn">← Back to Download</a>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-color" style="background: #FFD700;"></div> Selected / Target</div>
+  <div class="legend-item"><div class="legend-color" style="background: #FF4136;"></div> Influenced (Direct)</div>
+  <div class="legend-item"><div class="legend-color" style="background: #1E90FF;"></div> Influencers</div>
+  <div class="legend-item"><div class="legend-color" style="background: #FFDC00;"></div> Critical (Watchdog)</div>
+</div>
+
+<svg id="network"></svg>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="silicium_core.js"></script>
+<script>
+  // ======================
+  // 50 threat nodes (simulados)
+  // ======================
+  const nodes = [];
+  for(let i=1;i<=50;i++){
+    const node = {
+      id:`T${i}`,
+      phi:parseFloat((0.65 + Math.random()*0.20).toFixed(2)),
+      h:parseFloat((0.60 + Math.random()*0.20).toFixed(2)),
+      influence:[...Array(3)].map(()=>Math.floor(Math.random()*50)),
+      phrase:`Threat concept #${i} simulation`
+    };
+    SiliciumCore.calculateMetrics(node);
+    nodes.push(node);
+  }
+
+  // ======================
+  // Construir links
+  // ======================
+  const links = [];
+  nodes.forEach((t, idx)=>{
+    t.influence.forEach(i=>{
+      if(i>=0 && i<nodes.length && i!==idx){
+        links.push({source:t.id, target:`T${i+1}`});
+      }
+    });
+  });
+
+  // ======================
+  // D3 Force Simulation
+  // ======================
+  const svg = d3.select("#network");
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+
+  const simulation = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id(d=>d.id).distance(100))
+    .force("charge", d3.forceManyBody().strength(-150))
+    .force("center", d3.forceCenter(width/2,height/2));
+
+  const link = svg.append("g")
+    .attr("stroke","#444")
+    .selectAll("line")
+    .data(links)
+    .join("line")
+    .attr("stroke-width",1.5);
+
+  const nodeGroup = svg.append("g")
+    .selectAll("g")
+    .data(nodes)
+    .join("g")
+    .call(d3.drag()
+      .on("start", dragstarted)
+      .on("drag", dragged)
+      .on("end", dragended));
+
+  const nodeCircle = nodeGroup.append("circle")
+    .attr("r", d=>d.phi*20)
+    .attr("fill", d=>d3.interpolateViridis(d.h))
+    .attr("stroke", "#111")
+    .attr("stroke-width", 0.5);
+
+  const labels = nodeGroup.append("text")
+    .text(d=>d.id)
+    .attr("x", 8)
+    .attr("y", 4);
+
+  nodeCircle.append("title")
+    .text(d=>`${d.id}: ${d.phrase}\nΦ:${d.phi.toFixed(2)}, H:${d.h.toFixed(2)}, Centrality:${d.centrality.toFixed(3)}`);
+
+  // ======================
+  // Interação: Immunitas (Neutralização) no click
+  // ======================
+  nodeCircle.on("click", function(event, d){
+    SiliciumCore.applyImmunitas(nodes, d.id);
+    highlightPropagation(d);
+    updateVisuals();
+  });
+
+  function updateVisuals() {
+    nodeCircle.transition().duration(300)
+      .attr("r", d => d.phi * 20)
+      .attr("fill", d => {
+        if (d.status === "NEUTRALIZED") return "#AAA";
+        return d3.interpolateViridis(d.h);
+      });
+
+    nodeCircle.select("title")
+      .text(d=>`${d.id}: ${d.phrase}\nΦ:${d.phi.toFixed(2)}, H:${d.h.toFixed(2)}, Centrality:${d.centrality.toFixed(3)}\nStatus: ${d.status}`);
+  }
+
+  function highlightPropagation(d){
+    const influenced = new Set();
+    const influencers = new Set();
+    links.forEach(l=>{
+      if(l.source.id === d.id) influenced.add(l.target.id);
+      if(l.target.id === d.id) influencers.add(l.source.id);
+    });
+    nodeCircle.attr("fill", n=>{
+      if(n.id===d.id) return "#FFD700";       // nó clicado
+      if(influenced.has(n.id)) return "#FF4136"; // nós influenciados
+      if(influencers.has(n.id)) return "#1E90FF"; // nós influenciadores
+      if(n.status === "NEUTRALIZED") return "#AAA";
+      return d3.interpolateViridis(n.h);       // outros
+    });
+    link.attr("stroke", l=>{
+      if(l.source.id===d.id || l.target.id===d.id) return "#FFF";
+      return "#444";
+    }).attr("stroke-width", l=>{
+      if(l.source.id===d.id || l.target.id===d.id) return 3;
+      return 1.5;
+    });
+  }
+
+  // ======================
+  // Watchdog: realça automaticamente nós críticos
+  // ======================
+  function watchdog(){
+    const scan = SiliciumCore.runWatchdog(nodes);
+
+    nodes.forEach(n=>{
+      if(n.status === "CRITICAL"){
+        // pulso visual
+        nodeCircle.filter(d=>d.id===n.id)
+          .transition()
+          .duration(500)
+          .attr("stroke","#FFDC00")
+          .attr("stroke-width",5)
+          .transition()
+          .duration(500)
+          .attr("stroke","#111")
+          .attr("stroke-width",0.5);
+      }
+    });
+  }
+
+  setInterval(watchdog, 2000);
+
+  // ======================
+  // Simulação Temporal (Inércia Lógica)
+  // ======================
+  setInterval(() => {
+    SiliciumCore.processTimeStep(nodes);
+    updateVisuals();
+  }, 1000);
+
+  // ======================
+  // Tick function
+  // ======================
+  simulation.on("tick", ()=>{
+    link.attr("x1",d=>d.source.x)
+        .attr("y1",d=>d.source.y)
+        .attr("x2",d=>d.target.x)
+        .attr("y2",d=>d.target.y);
+    nodeGroup.attr("transform", d => `translate(${d.x},${d.y})`);
+  });
+
+  function dragstarted(event,d){
+    if(!event.active) simulation.alphaTarget(0.3).restart();
+    d.fx=d.x; d.fy=d.y;
+  }
+  function dragged(event,d){ d.fx=event.x; d.fy=event.y; }
+  function dragended(event,d){
+    if(!event.active) simulation.alphaTarget(0);
+    d.fx=null; d.fy=null;
+  }
+
+  // Handle resize
+  window.addEventListener('resize', () => {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    simulation.force("center", d3.forceCenter(width/2, height/2));
+    simulation.alpha(0.3).restart();
+  });
+</script>
+</body>
+</html>
