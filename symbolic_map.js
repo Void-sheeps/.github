@@ -30,6 +30,7 @@
  *          G(s) = (Q(s) - θ) mod Λ
  */
 
+const OntoConst = require('./onto_const');
 
 /**
  * @typedef {Object} Signo
@@ -114,22 +115,22 @@ function modularAxial(s, ω, t) {
  * @param {number} Λ  Limite estrutural máximo
  * @returns {{categoria: string, grau: number}}
  */
-function estadoCategorial(s, θ, Λ) {
+function estadoCategorial(s, θ = OntoConst.LIMIAR, Λ = OntoConst.LIMITE_MAXIMO) {
     const Q = s.quanta;
 
     if (Q >= Λ) {
-        return { categoria: "Overflow", grau: 0 };
+        return { categoria: OntoConst.CATEGORIA.OVERFLOW, grau: 0 };
     }
 
     if (Q >= θ) {
         return {
-            categoria: "Natural",
+            categoria: OntoConst.CATEGORIA.NATURAL,
             grau: (Q - θ) % Λ
         };
     }
 
     return {
-        categoria: "Transcendental",
+        categoria: OntoConst.CATEGORIA.TRANSCENDENTAL,
         grau: (Q - θ + Λ) % Λ
     };
 }
@@ -137,13 +138,13 @@ function estadoCategorial(s, θ, Λ) {
 if (require.main === module) {
     console.log("--- Symbolic Ontological Map Validation ---");
 
-    const θ = 15;
-    const Λ = 100;
+    const θ = OntoConst.LIMIAR;
+    const Λ = OntoConst.LIMITE_MAXIMO;
 
     const s1 = { id: "S1", quanta: 20 };
     const res1 = estadoCategorial(s1, θ, Λ);
     console.log(`Test 1 (Natural): Q=${s1.quanta}, θ=${θ} -> ${res1.categoria}, Grau: ${res1.grau}`);
-    if (res1.categoria !== "Natural" || res1.grau !== 5) {
+    if (res1.categoria !== OntoConst.CATEGORIA.NATURAL || res1.grau !== 5) {
         console.error("X Test 1 Failed");
         process.exit(1);
     }
@@ -151,21 +152,21 @@ if (require.main === module) {
     const s2 = { id: "S2", quanta: 10 };
     const res2 = estadoCategorial(s2, θ, Λ);
     console.log(`Test 2 (Transcendental): Q=${s2.quanta}, θ=${θ} -> ${res2.categoria}, Grau: ${res2.grau}`);
-    if (res2.categoria !== "Transcendental" || res2.grau !== 95) {
-        console.error("X Test 2 Failed");
+    if (res2.categoria !== OntoConst.CATEGORIA.TRANSCENDENTAL || res2.grau !== 122) { // 10-15+127 = 122
+        console.error(`X Test 2 Failed: expected 122, got ${res2.grau}`);
         process.exit(1);
     }
 
-    const s3 = { id: "S3", quanta: 100 };
+    const s3 = { id: "S3", quanta: 127 };
     const res3 = estadoCategorial(s3, θ, Λ);
     console.log(`Test 3 (Overflow): Q=${s3.quanta}, Λ=${Λ} -> ${res3.categoria}`);
-    if (res3.categoria !== "Overflow") {
+    if (res3.categoria !== OntoConst.CATEGORIA.OVERFLOW) {
         console.error("X Test 3 Failed");
         process.exit(1);
     }
 
     // Test modularAxial
-    const ω = (t) => Math.sin(t);
+    const ω = OntoConst.MODULACAO.senoidal;
     const val = modularAxial(s1, ω, Math.PI / 2);
     console.log(`Test 4 (Axial): Q=${s1.quanta}, sin(π/2) -> ${val}`);
     if (Math.abs(val - 20) > 0.0001) {
