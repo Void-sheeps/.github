@@ -81,66 +81,58 @@
 
 <script>
 // =========================
-// 1. Data Initialization
+// 1. Data Loading
 // =========================
-const tokenData = {
-  "categories": ["Violacao", "Gramatica", "Tipo", "Funcao", "Latente", "Estavel", "Escalar", "Transitorio"],
-  "tokens": [
-    {"symbol":"V1","categories":["Violacao"],"agency_state":[0.9,0,0,0,0,0,0,0]},
-    {"symbol":"V2","categories":["Violacao","Latente"],"agency_state":[0.8,0,0,0,0.7,0,0,0]},
-    {"symbol":"V3","categories":["Latente"],"agency_state":[0,0,0,0,0.95,0,0,0]},
-    {"symbol":"V4","categories":["Violacao","Escalar"],"agency_state":[0.8,0,0,0,0,0,0.85,0]},
-    {"symbol":"V5","categories":["Violacao"],"agency_state":[0.99,0,0,0,0,0,0,0]},
-    {"symbol":"V6","categories":["Violacao"],"agency_state":[0.9,0,0,0,0,0,0,0]},
-    {"symbol":"V7","categories":["Latente","Tipo"],"agency_state":[0,0.9,0,0,0.8,0,0,0]},
-    {"symbol":"V8","categories":["Latente"],"agency_state":[0,0,0,0,0.88,0,0,0]},
-    {"symbol":"V9","categories":["Violacao"],"agency_state":[0.85,0,0,0,0,0,0,0]},
-    {"symbol":"V10","categories":["Estavel"],"agency_state":[0,0,0,0,0,0.92,0,0]},
-    {"symbol":"V11","categories":["Escalar"],"agency_state":[0,0,0,0,0,0,0.95,0]},
-    {"symbol":"V12","categories":["Funcao"],"agency_state":[0,0,0,0.9,0,0,0,0]},
-    {"symbol":"V13","categories":["Latente"],"agency_state":[0,0,0,0,0.87,0,0,0]},
-    {"symbol":"V14","categories":["Violacao","Funcao"],"agency_state":[0.75,0,0,0.95,0,0,0,0]},
-    {"symbol":"V15","categories":["Estavel"],"agency_state":[0,0,0,0,0,0.9,0,0]},
-    {"symbol":"V16","categories":["Latente"],"agency_state":[0,0,0,0,0.88,0,0,0]},
-    {"symbol":"V17","categories":["Funcao"],"agency_state":[0,0,0,0.9,0,0,0,0]},
-    {"symbol":"V18","categories":["Latente"],"agency_state":[0,0,0,0,0.86,0,0,0]},
-    {"symbol":"V19","categories":["Violacao"],"agency_state":[0.9,0,0,0,0,0,0,0]},
-    {"symbol":"V20","categories":["Tipo"],"agency_state":[0,0,0.9,0,0,0,0,0]},
-    {"symbol":"V21","categories":["Violacao","Latente"],"agency_state":[0.8,0,0,0,0.9,0,0,0]},
-    {"symbol":"V22","categories":["Latente","Tipo"],"agency_state":[0,0,0,0,0.88,0,0,0]},
-    {"symbol":"V23","categories":["Violacao"],"agency_state":[0.9,0,0,0,0,0,0,0]},
-    {"symbol":"V24","categories":["Violacao","Latente"],"agency_state":[0.85,0,0,0,0.88,0,0,0]},
-    {"symbol":"V25","categories":["Funcao"],"agency_state":[0,0,0,0.92,0,0,0,0]},
-    {"symbol":"V26","categories":["Latente"],"agency_state":[0,0,0,0,0.88,0,0,0]},
-    {"symbol":"V27","categories":["Latente"],"agency_state":[0,0,0,0,0.9,0,0,0]},
-    {"symbol":"V28","categories":["Escalar"],"agency_state":[0,0,0,0,0,0,0.95,0]},
-    {"symbol":"V29","categories":["Escalar"],"agency_state":[0,0,0,0,0,0,0.9,0]},
-    {"symbol":"V30","categories":["Latente"],"agency_state":[0,0,0,0,0.88,0,0,0]},
-    {"symbol":"V31","categories":["Latente"],"agency_state":[0,0,0,0,0.87,0,0,0]},
-    {"symbol":"V32","categories":["Escalar"],"agency_state":[0,0,0,0,0,0,0.9,0]},
-    {"symbol":"V33","categories":["Violacao"],"agency_state":[0.85,0,0,0,0,0,0,0]},
-    {"symbol":"V43","categories":["Latente"],"agency_state":[0,0,0,0,0.87,0,0,0]},
-    {"symbol":"V34","categories":["Latente"],"agency_state":[0,0,0,0,0.88,0,0,0]},
-    {"symbol":"V35","categories":["Funcao"],"agency_state":[0,0,0,0.9,0,0,0,0]},
-    {"symbol":"V36","categories":["Latente"],"agency_state":[0,0,0,0,0.86,0,0,0]},
-    {"symbol":"V37","categories":["Estavel"],"agency_state":[0,0,0,0,0,0.92,0,0]},
-    {"symbol":"V38","categories":["Latente"],"agency_state":[0,0,0,0,0.88,0,0,0]},
-    {"symbol":"V39","categories":["Violacao"],"agency_state":[0.9,0,0,0,0,0,0,0]},
-    {"symbol":"V40","categories":["Funcao"],"agency_state":[0,0,0,0.95,0,0,0,0]},
-    {"symbol":"V41","categories":["Estavel"],"agency_state":[0,0,0,0,0,0.9,0,0]},
-    {"symbol":"V42","categories":["Transitorio"],"agency_state":[0,0,0,0,0,0,0,0.88]},
-    {"symbol":"V44","categories":["Escalar"],"agency_state":[0,0,0,0,0,0,0.9,0]},
-    {"symbol":"V45","categories":["Latente"],"agency_state":[0,0,0,0,0.88,0,0,0]},
-    {"symbol":"V46","categories":["Latente"],"agency_state":[0,0,0,0,0.87,0,0,0]},
-    {"symbol":"V47","categories":["Estavel"],"agency_state":[0,0,0,0,0,0.9,0,0]},
-    {"symbol":"V48","categories":["Latente"],"agency_state":[0,0,0,0,0.86,0,0,0]},
-    {"symbol":"V49","categories":["Latente"],"agency_state":[0,0,0,0,0.85,0,0,0]},
-    {"symbol":"V50","categories":["Violacao"],"agency_state":[0.9,0,0,0,0,0,0,0]}
-  ]
-};
-
 const svg = document.getElementById("canvas");
 let width, height;
+let nodes = [];
+
+async function loadData() {
+    try {
+        const response = await fetch('token_data.json');
+        if (!response.ok) throw new Error("Failed to load");
+        const tokenData = await response.json();
+        initGraph(tokenData);
+    } catch (err) {
+        console.warn("Could not fetch token_data.json, using fallback.", err);
+        // Fallback data (minimal set for local preview)
+        const fallback = {
+            "categories": ["Violacao", "Gramatica", "Tipo", "Funcao", "Latente", "Estavel", "Escalar", "Transitorio"],
+            "tokens": [
+                {"symbol":"V1","categories":["Violacao"],"agency_state":[0.9,0,0,0,0,0,0,0]},
+                {"symbol":"V2","categories":["Violacao","Latente"],"agency_state":[0.8,0,0,0,0.7,0,0,0]},
+                {"symbol":"V3","categories":["Latente"],"agency_state":[0,0,0,0,0.95,0,0,0]},
+                {"symbol":"V50","categories":["Violacao"],"agency_state":[0.9,0,0,0,0,0,0,0]}
+            ]
+        };
+        initGraph(fallback);
+    }
+}
+
+function initGraph(tokenData) {
+    nodes = tokenData.tokens.map((t, idx) => ({
+        id: idx,
+        name: t.symbol,
+        categories: t.categories,
+        agency: t.agency_state,
+        cx: 0,
+        cy: 0
+    }));
+
+    updateDimensions();
+
+    // Grid Init
+    const padding = 50;
+    const cols = 10;
+    nodes.forEach((node, idx) => {
+        const row = Math.floor(idx / cols);
+        const col = idx % cols;
+        node.cx = padding + col * ((width - 2 * padding) / 9);
+        node.cy = padding + row * ((height - 2 * padding) / Math.max(1, Math.ceil(nodes.length/10) - 1));
+    });
+
+    draw();
+}
 
 function updateDimensions() {
   width = svg.clientWidth || window.innerWidth * 0.9;
@@ -148,17 +140,11 @@ function updateDimensions() {
   svg.setAttribute("width", width);
   svg.setAttribute("height", height);
 }
-updateDimensions();
-window.addEventListener('resize', updateDimensions);
 
-const nodes = tokenData.tokens.map((t, idx) => ({
-    id: idx,
-    name: t.symbol,
-    categories: t.categories,
-    agency: t.agency_state,
-    cx: 0,
-    cy: 0
-}));
+window.addEventListener('resize', () => {
+    updateDimensions();
+    draw();
+});
 
 // =========================
 // 2. Helper Functions
@@ -257,16 +243,6 @@ function draw() {
 let selectedNode = null;
 let offsetX = 0, offsetY = 0;
 
-// Grid Init
-const padding = 50;
-const cols = 10;
-nodes.forEach((node, idx) => {
-  const row = Math.floor(idx / cols);
-  const col = idx % cols;
-  node.cx = padding + col * ((width - 2 * padding) / 9);
-  node.cy = padding + row * ((height - 2 * padding) / 4);
-});
-
 svg.addEventListener('mousedown', e => {
   const rect = svg.getBoundingClientRect();
   const mx = e.clientX - rect.left;
@@ -301,7 +277,7 @@ window.addEventListener('mouseup', () => {
   selectedNode = null;
 });
 
-draw();
+loadData();
 
 </script>
 </body>

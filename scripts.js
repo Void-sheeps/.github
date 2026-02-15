@@ -248,6 +248,7 @@ function getCompilationMessages() {
     'node entropy_dual_operator.js --validate',
     'node silicium_core.js --validate',
     'node token_processor.js --validate',
+    'node parity_protocol.js --sync-echo',
     'node symbolic_map.js --validate',
     'node semantic_field.js --validate',
     'node onto_const.js --validate',
