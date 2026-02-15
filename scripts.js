@@ -236,6 +236,7 @@ function getCompilationMessages() {
     'ghc -c MultilinearAlgebra/Structural/Serialization.hs -o MultilinearAlgebra/Structural/Serialization.o',
     'ghc -c MultilinearAlgebra/Algorithms/Search.hs -o MultilinearAlgebra/Algorithms/Search.o',
     'ghc -c EmpireSilicium/NodeSystem.hs -o EmpireSilicium/NodeSystem.o',
+    'ghc -c TokenAccountability.hs -o TokenAccountability.o',
     'ghc -c Main.hs -o Main.o',
     '6502-asm Estabilizacao -o Estabilizacao.bin',
     'xc16-gcc MapaOntologico_dsPIC.s -o MapaOntologico_dsPIC.elf',
