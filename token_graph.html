@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Token Graph (Interactive)</title>
+<style>
+  body {
+    background-color: #0d1117;
+    color: #c9d1d9;
+    font-family: 'Inter', sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 0;
+    padding: 20px;
+    user-select: none;
+    overflow: hidden;
+  }
+
+  h2 { margin-bottom: 5px; color: #58a6ff; }
+  p { margin-top: 0; color: #8b949e; font-size: 0.9em; }
+
+  svg {
+    border: 1px solid #30363d;
+    background-color: #010409;
+    box-shadow: 0 0 20px rgba(0,0,0,0.7);
+    border-radius: 12px;
+    cursor: default;
+    width: 90vw;
+    height: 80vh;
+  }
+
+  .node {
+    stroke: #f0f6fc;
+    stroke-width: 1px;
+    cursor: grab;
+    transition: filter 0.2s;
+  }
+
+  .node:hover {
+    filter: brightness(1.2);
+  }
+
+  .node:active {
+    cursor: grabbing;
+    stroke: #58a6ff;
+    stroke-width: 3px;
+  }
+
+  text {
+    pointer-events: none;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: bold;
+    text-shadow: 0 1px 3px black;
+    font-size: 10px;
+  }
+
+  .back-btn {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    padding: 8px 16px;
+    background: #21262d;
+    color: #c9d1d9;
+    text-decoration: none;
+    border-radius: 6px;
+    border: 1px solid #30363d;
+    font-size: 14px;
+    z-index: 100;
+  }
+</style>
+</head>
+<body>
+
+<a href="index.html" class="back-btn">← Back</a>
+
+<h2>Token Network Graph</h2>
+<p>Drag tokens to explore connections based on shared categories.</p>
+
+<svg id="canvas"></svg>
+
+<script>
+// =========================
+// 1. Data Loading
+// =========================
+const svg = document.getElementById("canvas");
+let width, height;
+let nodes = [];
+
+async function loadData() {
+    try {
+        const response = await fetch('token_data.json');
+        if (!response.ok) throw new Error("Failed to load");
+        const tokenData = await response.json();
+        initGraph(tokenData);
+    } catch (err) {
+        console.warn("Could not fetch token_data.json, using fallback.", err);
+        // Fallback data (minimal set for local preview)
+        const fallback = {
+            "categories": ["Violacao", "Gramatica", "Tipo", "Funcao", "Latente", "Estavel", "Escalar", "Transitorio"],
+            "tokens": [
+                {"symbol":"V1","categories":["Violacao"],"agency_state":[0.9,0,0,0,0,0,0,0]},
+                {"symbol":"V2","categories":["Violacao","Latente"],"agency_state":[0.8,0,0,0,0.7,0,0,0]},
+                {"symbol":"V3","categories":["Latente"],"agency_state":[0,0,0,0,0.95,0,0,0]},
+                {"symbol":"V50","categories":["Violacao"],"agency_state":[0.9,0,0,0,0,0,0,0]}
+            ]
+        };
+        initGraph(fallback);
+    }
+}
+
+function initGraph(tokenData) {
+    nodes = tokenData.tokens.map((t, idx) => ({
+        id: idx,
+        name: t.symbol,
+        categories: t.categories,
+        agency: t.agency_state,
+        cx: 0,
+        cy: 0
+    }));
+
+    updateDimensions();
+
+    // Grid Init
+    const padding = 50;
+    const cols = 10;
+    nodes.forEach((node, idx) => {
+        const row = Math.floor(idx / cols);
+        const col = idx % cols;
+        node.cx = padding + col * ((width - 2 * padding) / 9);
+        node.cy = padding + row * ((height - 2 * padding) / Math.max(1, Math.ceil(nodes.length/10) - 1));
+    });
+
+    draw();
+}
+
+function updateDimensions() {
+  width = svg.clientWidth || window.innerWidth * 0.9;
+  height = svg.clientHeight || window.innerHeight * 0.8;
+  svg.setAttribute("width", width);
+  svg.setAttribute("height", height);
+}
+
+window.addEventListener('resize', () => {
+    updateDimensions();
+    draw();
+});
+
+// =========================
+// 2. Helper Functions
+// =========================
+
+function intersection(a, b) {
+  return a.filter(x => b.includes(x));
+}
+
+function getPrimaryCategoryIndex(agency) {
+    let max = -1;
+    let best = 0;
+    agency.forEach((v, i) => {
+        if (v > max) {
+            max = v;
+            best = i;
+        }
+    });
+    return best;
+}
+
+function categoryToColor(idx) {
+    const colors = [
+        "#ff7b72", // Violacao
+        "#d299ff", // Gramatica
+        "#79c0ff", // Tipo
+        "#7ee787", // Funcao
+        "#d299ff", // Latente
+        "#ffa657", // Estavel
+        "#a5d6ff", // Escalar
+        "#f2cc60"  // Transitorio
+    ];
+    return colors[idx % colors.length];
+}
+
+function computeIntensity(node, allNodes) {
+    let score = 0;
+    allNodes.forEach(other => {
+        if (other.id !== node.id) {
+            const inter = intersection(node.categories, other.categories);
+            score += inter.length;
+        }
+    });
+    return Math.min(score / 20, 1);
+}
+
+// =========================
+// 3. Rendering
+// =========================
+function draw() {
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  // Links
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const inter = intersection(nodes[i].categories, nodes[j].categories);
+      if (inter.length > 0) {
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("x1", nodes[i].cx);
+        line.setAttribute("y1", nodes[i].cy);
+        line.setAttribute("x2", nodes[j].cx);
+        line.setAttribute("y2", nodes[j].cy);
+        line.setAttribute("stroke", "rgba(139, 148, 158, 0.2)");
+        line.setAttribute("stroke-width", "1");
+        svg.appendChild(line);
+      }
+    }
+  }
+
+  // Nodes
+  nodes.forEach(node => {
+    const catIdx = getPrimaryCategoryIndex(node.agency);
+    const color = categoryToColor(catIdx);
+
+    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circle.setAttribute("cx", node.cx);
+    circle.setAttribute("cy", node.cy);
+    circle.setAttribute("r", 15);
+    circle.setAttribute("fill", color);
+    circle.setAttribute("class", "node");
+    svg.appendChild(circle);
+
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.setAttribute("x", node.cx);
+    text.setAttribute("y", node.cy + 4);
+    text.setAttribute("fill", "#fff");
+    text.setAttribute("text-anchor", "middle");
+    text.textContent = node.name;
+    svg.appendChild(text);
+  });
+}
+
+// =========================
+// 4. Interactivity
+// =========================
+let selectedNode = null;
+let offsetX = 0, offsetY = 0;
+
+svg.addEventListener('mousedown', e => {
+  const rect = svg.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const node = nodes[i];
+    const dx = mx - node.cx;
+    const dy = my - node.cy;
+    if (Math.sqrt(dx*dx + dy*dy) <= 15) {
+      selectedNode = node;
+      offsetX = dx;
+      offsetY = dy;
+      break;
+    }
+  }
+});
+
+window.addEventListener('mousemove', e => {
+  if (!selectedNode) return;
+  const rect = svg.getBoundingClientRect();
+  let newX = e.clientX - rect.left - offsetX;
+  let newY = e.clientY - rect.top - offsetY;
+  newX = Math.max(15, Math.min(width - 15, newX));
+  newY = Math.max(15, Math.min(height - 15, newY));
+  selectedNode.cx = newX;
+  selectedNode.cy = newY;
+  draw();
+});
+
+window.addEventListener('mouseup', () => {
+  selectedNode = null;
+});
+
+loadData();
+
+</script>
+</body>
+</html>

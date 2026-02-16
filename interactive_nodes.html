@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Nodes Interativos (Drag & Drop)</title>
+<style>
+  body {
+    background-color: #1e1e1e;
+    color: #f0f0f0;
+    font-family: sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 0;
+    padding: 20px;
+    user-select: none; /* Evita selecionar texto ao arrastar */
+  }
+
+  h2 { margin-bottom: 5px; }
+  p { margin-top: 0; color: #888; font-size: 0.9em; }
+
+  svg {
+    border: 1px solid #444;
+    background-color: #111;
+    box-shadow: 0 0 15px rgba(0,0,0,0.5);
+    border-radius: 8px;
+    cursor: default;
+  }
+
+  .node {
+    stroke: #fff;
+    stroke-width: 2px;
+    cursor: grab;
+    transition: stroke 0.2s; /* Suaviza a troca de cor da borda */
+  }
+
+  .node:active {
+    cursor: grabbing;
+    stroke: #4fc1ff; /* Azul ao clicar */
+  }
+
+  text {
+    pointer-events: none; /* O mouse ignora o texto e clica no circulo */
+    font-family: monospace;
+    font-weight: bold;
+    text-shadow: 0 1px 2px black;
+  }
+
+  .back-btn {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    padding: 8px 16px;
+    background: #21262d;
+    color: #c9d1d9;
+    text-decoration: none;
+    border-radius: 6px;
+    border: 1px solid #30363d;
+    font-size: 14px;
+    z-index: 100;
+  }
+</style>
+</head>
+<body>
+
+<a href="index.html" class="back-btn">← Back</a>
+
+<h2>Simulação: Arraste os Nodes</h2>
+<p>As conexões são recalculadas dinamicamente em tempo real.</p>
+
+<svg id="canvas" width="800" height="600"></svg>
+
+<script>
+// =========================
+// 1. Dados Iniciais
+// =========================
+const nodes = [
+  { id: 1, name: "Alpha",   rules: [1, 2, 3] },
+  { id: 2, name: "Beta",    rules: [2, 3, 4] },
+  { id: 3, name: "Gama",    rules: [3, 5] },
+  { id: 4, name: "Delta",   rules: [1, 4, 5] },
+  { id: 5, name: "Epsilon", rules: [1, 2] },
+  { id: 6, name: "Zeta",    rules: [4, 5, 9] },
+  { id: 7, name: "Omega",   rules: [9, 3, 1] }
+];
+
+const svg = document.getElementById("canvas");
+const width = +svg.getAttribute("width");
+const height = +svg.getAttribute("height");
+
+// Configuração de Layout Inicial (Grid)
+const padding = 100;
+const cols = 3;
+// Calcula linhas necessárias baseadas no total de nodes
+const rows = Math.ceil(nodes.length / cols);
+
+// =========================
+// 2. Funções Auxiliares (Lógica)
+// =========================
+
+// Retorna array com elementos em comum
+function intersection(a, b) {
+  return a.filter(x => b.includes(x));
+}
+
+// Calcula quão "conectado" um node é
+function computeIntensity(node, allNodes) {
+  let totalShared = 0;
+  allNodes.forEach(other => {
+    if (other.id !== node.id) {
+      const inter = intersection(node.rules, other.rules);
+      totalShared += inter.length;
+    }
+  });
+  // Normalização para cor (assumindo máx de 10 conexões para cor máxima)
+  return Math.min(totalShared / 10, 1);
+}
+
+// Gera cor baseada na intensidade (Azul -> Roxo -> Vermelho)
+function intensityToColor(val) {
+  const r = Math.floor(100 + 155 * val);
+  const g = Math.floor(50 * (1 - val));
+  const b = Math.floor(200 * (1 - val) + 50);
+  return `rgb(${r},${g},${b})`;
+}
+
+// =========================
+// 3. Renderização (Draw)
+// =========================
+function drawNodes() {
+  // Limpa o SVG completamente
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  // --- Passo A: Desenhar Conexões (Ficam atrás dos círculos) ---
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const inter = intersection(nodes[i].rules, nodes[j].rules);
+
+      if (inter.length > 0) {
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("x1", nodes[i].cx);
+        line.setAttribute("y1", nodes[i].cy);
+        line.setAttribute("x2", nodes[j].cx);
+        line.setAttribute("y2", nodes[j].cy);
+
+        // Cor e espessura da linha baseada na força da conexão
+        const alpha = Math.min(inter.length * 0.25, 1);
+        line.setAttribute("stroke", `rgba(255, 255, 255, ${alpha})`);
+        line.setAttribute("stroke-width", inter.length + 0.5);
+
+        svg.appendChild(line);
+      }
+    }
+  }
+
+  // --- Passo B: Desenhar Nodes (Círculos e Texto) ---
+  nodes.forEach(node => {
+    const intensity = computeIntensity(node, nodes);
+    const color = intensityToColor(intensity);
+
+    // Círculo
+    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circle.setAttribute("cx", node.cx);
+    circle.setAttribute("cy", node.cy);
+    circle.setAttribute("r", 35); // Raio fixo
+    circle.setAttribute("fill", color);
+    circle.setAttribute("class", "node");
+
+    // Dataset ID ajuda se precisarmos identificar via DOM,
+    // mas a lógica de coordenadas abaixo já resolve o clique.
+    circle.dataset.id = node.id;
+
+    svg.appendChild(circle);
+
+    // Texto
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.setAttribute("x", node.cx);
+    text.setAttribute("y", node.cy + 5); // Pequeno ajuste vertical para centralizar
+    text.setAttribute("fill", "#fff");
+    text.setAttribute("font-size", "12");
+    text.setAttribute("text-anchor", "middle");
+    text.textContent = node.name;
+    svg.appendChild(text);
+  });
+}
+
+// =========================
+// 4. Lógica de Interatividade
+// =========================
+let selectedNode = null;
+let offsetX = 0, offsetY = 0;
+
+// Inicializa posições (Grid simples)
+nodes.forEach((node, idx) => {
+  const row = Math.floor(idx / cols);
+  const col = idx % cols;
+  // Distribui os nodes na tela
+  node.cx = padding + col * ((width - 2 * padding) / (Math.max(cols - 1, 1)));
+  node.cy = padding + row * ((height - 2 * padding) / (Math.max(rows - 1, 1)));
+});
+
+// Evento: Mouse Down (Iniciar arraste)
+svg.addEventListener('mousedown', e => {
+  // Pega coordenadas do mouse relativas ao SVG
+  const rect = svg.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  // Verifica se clicou dentro de algum círculo
+  // Iteramos ao contrário para pegar o que estiver visualmente "por cima"
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const node = nodes[i];
+    const dx = mx - node.cx;
+    const dy = my - node.cy;
+
+    // 35 é o raio do círculo definido no drawNodes
+    if (Math.sqrt(dx*dx + dy*dy) <= 35) {
+      selectedNode = node;
+      // Guarda a diferença entre o clique e o centro do círculo
+      // para evitar que o círculo "pule" para o centro do mouse
+      offsetX = dx;
+      offsetY = dy;
+      break;
+    }
+  }
+});
+
+// Evento: Mouse Move (Mover)
+// Usamos window para não perder o arraste se o mouse sair rápido do SVG
+window.addEventListener('mousemove', e => {
+  if (!selectedNode) return;
+
+  const rect = svg.getBoundingClientRect();
+
+  // Calcula nova posição absoluta
+  let newX = e.clientX - rect.left - offsetX;
+  let newY = e.clientY - rect.top - offsetY;
+
+  // Limitar bordas para não jogar o node para fora do SVG (opcional)
+  newX = Math.max(35, Math.min(width - 35, newX));
+  newY = Math.max(35, Math.min(height - 35, newY));
+
+  // Atualiza dados
+  selectedNode.cx = newX;
+  selectedNode.cy = newY;
+
+  // Redesenha a cena
+  drawNodes();
+});
+
+// Evento: Mouse Up (Soltar)
+window.addEventListener('mouseup', () => {
+  selectedNode = null;
+});
+
+// Primeira renderização ao carregar a página
+drawNodes();
+
+</script>
+</body>
+</html>
