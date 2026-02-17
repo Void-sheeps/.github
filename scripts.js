@@ -256,6 +256,7 @@ function getCompilationMessages() {
     'node symbolic_map.js --validate',
     'node semantic_field.js --validate',
     'node onto_const.js --validate',
+    'python3 narrative_immersion.py --simulate',
     'linking modules...',
     'Dictionary Verification: Passed',
     'Fermi-Dirac symmetry: Verified (1.0)',
