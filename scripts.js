@@ -261,6 +261,8 @@ function getCompilationMessages() {
     'python3 narrative_dynamics.py --simulate-dynamics',
     'python3 hex_engine.py --snapshot',
     'python3 hex_analysis.py --visualize',
+    'python3 infinite_set.py --recursive',
+    'python3 set_analysis.py --depth',
     'linking modules...',
     'Dictionary Verification: Passed',
     'Fermi-Dirac symmetry: Verified (1.0)',
@@ -470,10 +472,14 @@ function simulateDownloadProcess() {
   setTimeout(() => {
     updateStatus('preparing', 'Initializing CloverPit Hex Grid Engine...');
   }, 5000); // New status
+
+  setTimeout(() => {
+    updateStatus('preparing', 'Recursively mapping Infinite Sets...');
+  }, 6000); // New status
   
   setTimeout(() => {
     updateStatus('preparing', 'Linking dependencies and libraries...');
-  }, 7000); // Slower
+  }, 8000); // Slower
   
   setTimeout(() => {
     updateStatus('downloading', 'Upload complete, starting download...');
