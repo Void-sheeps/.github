@@ -53,9 +53,6 @@ class NarrativeImmersionField(nn.Module):
         Classifies the narrative state based on threshold logic.
         Returns a string label for the dominant state.
         """
-        # We use standard python conditionals here for readability,
-        # though this could be vectorized with boolean masks for large batches.
-
         val_C = C.item()
         val_E = E.item()
         val_S = S.item()
@@ -97,22 +94,18 @@ def simulate_narrative():
     model = NarrativeImmersionField()
 
     # Initialize a scenario: A High Budget Movie with a plot hole.
-    # We require gradients to simulate "Phase Transitions" (fixing the story).
-    # Initial State: Good visuals (A), Good Emotion (E), but Low Logic (C) -> "Dream Logic" or undefined
-
-    # Story Parameters (Learnable)
-    # Using logits + sigmoid to ensure [0,1] range during optimization
+    # We use logits + sigmoid to ensure [0,1] range during optimization.
+    # Initial State: Good visuals (A), Good Emotion (E), but Low Logic (C)
     story_params = nn.Parameter(torch.logit(torch.tensor([0.3, 0.8, 0.9]))) # C, E, A
 
     # Audience Parameter (Fixed for this agent)
-    # This agent is willing to believe (S starts high), but S is reactive to C in our complex model
-    # For this simple optimization, we assume S is a property of the audience interaction.
+    # This agent is willing to believe (S starts high)
     audience_susceptibility = torch.tensor(0.85)
 
     optimizer = optim.Adam([story_params], lr=0.1)
 
     print("Phase 1: Optimizing for Deep Flow Immersion...")
-    print("Goal: Increase Coherence (C) without losing Emotion (E)")
+    print("Goal: The 'Writer' increases Coherence (C) via gradient descent.")
 
     for epoch in range(21):
         optimizer.zero_grad()
@@ -120,16 +113,15 @@ def simulate_narrative():
         # Extract current values
         current_vars = torch.sigmoid(story_params)
         C, E, A = current_vars[0], current_vars[1], current_vars[2]
-        S = audience_susceptibility # In this model, S is fixed to the audience capability
+        S = audience_susceptibility
 
         # Forward pass
         results = model(C, E, S, A)
 
-        # Loss: We want to Maximize Immersion Depth
-        # Loss = 1 - Immersion_Depth
+        # Loss: We want to Maximize Immersion Depth (Loss = 1 - Depth)
         loss = 1.0 - results["immersion_depth"]
 
-        # Backward pass (Phase Transition Force)
+        # Backward pass
         loss.backward()
         optimizer.step()
 
@@ -143,30 +135,33 @@ def simulate_narrative():
     print(f"\n{'-'*60}")
     print("Phase 2: EVENT - 'The Broken Spell'")
     print("A massive plot hole is revealed. Coherence (C) drops to 0.1.")
-    print("According to specs, this causes a cascaded drop in Suspension of Disbelief (S).")
+    print("Logic: Sudden drop in C causes cascaded drop in S.")
     print(f"{'-'*60}")
 
     with torch.no_grad():
         # Force drop C
         final_vars = torch.sigmoid(story_params)
         C_broken = torch.tensor(0.1)
-        E_broken = final_vars[1] # Emotion remains?
+        E_broken = final_vars[1]
+        A_broken = final_vars[2]
 
         # Emergent logic: If C drops drastically, S crashes manually
         # (This simulates the agent realizing the movie is fake)
         S_broken = audience_susceptibility * 0.1
-        A_broken = final_vars[2]
 
         broken_results = model(C_broken, E_broken, S_broken, A_broken)
         state_broken = model.classify_state(C_broken, E_broken, S_broken, A_broken)
 
-        print(f"Post-Event | C:{C_broken:.2f} E:{E_broken:.2f} S:{S_broken:.2f} | Depth: {broken_results['immersion_depth']:.3f} | State: {state_broken}")
+        print(f"Post-Event | C: {C_broken:.2f} E: {E_broken:.2f} S: {S_broken:.2f} | Depth: {broken_results['immersion_depth']:.3f} | State: {state_broken}")
 
         # Check Critical Distance
         cd = broken_results["critical_distance"]
+        depth = broken_results["immersion_depth"]
         print(f"Critical Distance (Analytical Viewing): {cd:.3f}")
-        if cd > broken_results["immersion_depth"]:
-            print(">> Result: The audience is now critiquing the script rather than experiencing it.")
+
+        if cd > depth:
+            print(">> CONCLUSION: The audience is now critiquing the script rather than experiencing it.")
+            print("   (Critical Distance > Immersion Depth)")
 
 if __name__ == "__main__":
     simulate_narrative()
