@@ -259,6 +259,8 @@ function getCompilationMessages() {
     'python3 narrative_immersion.py --simulate',
     'python3 narrative_analysis.py --analyze',
     'python3 narrative_dynamics.py --simulate-dynamics',
+    'python3 hex_engine.py --snapshot',
+    'python3 hex_analysis.py --visualize',
     'linking modules...',
     'Dictionary Verification: Passed',
     'Fermi-Dirac symmetry: Verified (1.0)',
@@ -464,6 +466,10 @@ function simulateDownloadProcess() {
   setTimeout(() => {
     updateStatus('preparing', 'Compiling source files...');
   }, 3000); // Slower
+
+  setTimeout(() => {
+    updateStatus('preparing', 'Initializing CloverPit Hex Grid Engine...');
+  }, 5000); // New status
   
   setTimeout(() => {
     updateStatus('preparing', 'Linking dependencies and libraries...');
