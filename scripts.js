@@ -259,6 +259,8 @@ function getCompilationMessages() {
     'python3 narrative_immersion.py --simulate',
     'python3 economic_engine.py --simulate',
     'python3 thought_engine.py --simulate',
+    'python3 phi_infinite_line.py --simulate',
+    'python3 phi_analysis.py',
     'linking modules...',
     'Dictionary Verification: Passed',
     'Fermi-Dirac symmetry: Verified (1.0)',
