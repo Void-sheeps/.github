@@ -261,6 +261,8 @@ function getCompilationMessages() {
     'python3 thought_engine.py --simulate',
     'python3 phi_infinite_line.py --simulate',
     'python3 phi_analysis.py',
+    'python3 phi_convergence.py --simulate',
+    'python3 phi_convergence_analysis.py',
     'linking modules...',
     'Dictionary Verification: Passed',
     'Fermi-Dirac symmetry: Verified (1.0)',
