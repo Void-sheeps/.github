@@ -265,6 +265,8 @@ function getCompilationMessages() {
     'python3 phi_convergence_analysis.py',
     'python3 cognitive_lorenz.py --simulate',
     'python3 lorenz_analysis.py',
+    'python3 cognitive_epistemic_field.py --simulate',
+    'python3 epistemic_analysis.py',
     'linking modules...',
     'Dictionary Verification: Passed',
     'Fermi-Dirac symmetry: Verified (1.0)',
