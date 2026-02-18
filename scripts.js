@@ -263,6 +263,8 @@ function getCompilationMessages() {
     'python3 phi_analysis.py',
     'python3 phi_convergence.py --simulate',
     'python3 phi_convergence_analysis.py',
+    'python3 cognitive_lorenz.py --simulate',
+    'python3 lorenz_analysis.py',
     'linking modules...',
     'Dictionary Verification: Passed',
     'Fermi-Dirac symmetry: Verified (1.0)',

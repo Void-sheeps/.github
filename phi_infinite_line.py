@@ -20,8 +20,7 @@ This module:
 import torch
 import torch.nn as nn
 import math
-import argparse
-import json
+import sys
 
 
 class PhiInfiniteLine(nn.Module):
@@ -87,28 +86,15 @@ class PhiInfiniteLine(nn.Module):
         }
 
 
-def run_simulation(export_json=False):
+if __name__ == "__main__":
+
+    if "--simulate" in sys.argv:
+        print("--- Phi Infinite Line Field Simulation ---")
+
     model = PhiInfiniteLine(max_k=64)
+
     output = model(f=1.0)
 
-    if export_json:
-        # Convert tensors to lists for JSON serialization
-        json_output = {
-            "k": output["k"].tolist(),
-            "A_branch": output["A_branch"].tolist(),
-            "B_branch": output["B_branch"].tolist(),
-            "distance": output["distance"].tolist(),
-            "density": output["density"].tolist(),
-            "P2_A": output["P2_A"].item(),
-            "P2_B": output["P2_B"].item(),
-            "P32_A": output["P32_A"].item(),
-            "P32_B": output["P32_B"].item()
-        }
-        with open("phi_data.json", "w") as f:
-            json.dump(json_output, f, indent=4)
-        print(f"\nResults exported to phi_data.json")
-
-    print("\n--- Phi Infinite Line Field Simulation ---")
     print("\n--- P² Comparison ---")
     print("Ascension A:", output["P2_A"].item())
     print("Regression B:", output["P2_B"].item())
@@ -119,14 +105,6 @@ def run_simulation(export_json=False):
 
     print("\nMax symmetry error:",
           torch.max(output["symmetry_error"]).item())
-    print("\nSimulation Complete.")
 
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Phi Bilateral Infinite Line Field Simulation")
-    parser.add_argument("--simulate", action="store_true", help="Run the field simulation")
-    parser.add_argument("--json", action="store_true", help="Export results to phi_data.json")
-    args = parser.parse_args()
-
-    if args.simulate or args.json or not any(vars(args).values()):
-        run_simulation(export_json=args.json or args.simulate)
+    if "--simulate" in sys.argv:
+        print("Simulation Complete.")
