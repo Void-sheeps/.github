@@ -20,7 +20,6 @@ This module:
 import torch
 import torch.nn as nn
 import math
-import sys
 
 
 class PhiInfiniteLine(nn.Module):
@@ -88,9 +87,6 @@ class PhiInfiniteLine(nn.Module):
 
 if __name__ == "__main__":
 
-    if "--simulate" in sys.argv:
-        print("--- Phi Infinite Line Field Simulation ---")
-
     model = PhiInfiniteLine(max_k=64)
 
     output = model(f=1.0)
@@ -105,6 +101,3 @@ if __name__ == "__main__":
 
     print("\nMax symmetry error:",
           torch.max(output["symmetry_error"]).item())
-
-    if "--simulate" in sys.argv:
-        print("Simulation Complete.")
