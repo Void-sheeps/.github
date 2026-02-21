@@ -265,6 +265,8 @@ function getCompilationMessages() {
     'python3 phi_convergence_analysis.py',
     'python3 round_mask_model.py --simulate',
     'python3 round_mask_analysis.py',
+    'python3 empire_silicium_framework.py --simulate',
+    'python3 empire_silicium_analysis.py',
     'linking modules...',
     'Dictionary Verification: Passed',
     'Fermi-Dirac symmetry: Verified (1.0)',
