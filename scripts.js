@@ -271,6 +271,8 @@ function getCompilationMessages() {
     'python3 neural_ode_analysis.py',
     'python3 round_model_hidden_mask.py --simulate',
     'python3 round_model_analysis.py',
+    'python3 reflective_watchdog.py --simulate',
+    'python3 watchdog_analysis.py',
     'linking modules...',
     'Dictionary Verification: Passed',
     'Fermi-Dirac symmetry: Verified (1.0)',
