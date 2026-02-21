@@ -268,6 +268,8 @@ function getCompilationMessages() {
     'python3 round_mask_analysis.py',
     'python3 empire_silicium_matrix.py --simulate',
     'python3 matrix_analysis.py',
+    'python3 musical_hash_field.py --simulate',
+    'python3 musical_analysis.py',
     'linking modules...',
     'Dictionary Verification: Passed',
     'Fermi-Dirac symmetry: Verified (1.0)',
