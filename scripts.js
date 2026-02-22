@@ -236,6 +236,7 @@ function getCompilationMessages() {
     'ghc -c MultilinearAlgebra/Structural/Serialization.hs -o MultilinearAlgebra/Structural/Serialization.o',
     'ghc -c MultilinearAlgebra/Algorithms/Search.hs -o MultilinearAlgebra/Algorithms/Search.o',
     'ghc -c EmpireSilicium/NodeSystem.hs -o EmpireSilicium/NodeSystem.o',
+    'ghc -c EmpireSilicium/VetorAbsoluto.hs -o EmpireSilicium/VetorAbsoluto.o',
     'ghc -c TokenAccountability.hs -o TokenAccountability.o',
     'ghc -c PedersenSchnorr.hs -o PedersenSchnorr.o',
     'ghc -c SigilHash.hs -o SigilHash.o',
