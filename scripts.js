@@ -269,6 +269,8 @@ function getCompilationMessages() {
     'python3 merge_module_analysis.py',
     'python3 antinomy_resolver.py --simulate',
     'python3 antinomy_analysis.py',
+    'python3 empire_silicium_framework.py --simulate',
+    'python3 empire_silicium_analysis.py',
     'linking modules...',
     'Dictionary Verification: Passed',
     'Fermi-Dirac symmetry: Verified (1.0)',
