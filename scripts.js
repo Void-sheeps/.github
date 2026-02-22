@@ -265,6 +265,8 @@ function getCompilationMessages() {
     'python3 phi_convergence_analysis.py',
     'python3 round_mask_model.py --simulate',
     'python3 round_mask_analysis.py',
+    'python3 symbolic_stability.py --simulate',
+    'python3 stability_analysis.py',
     'python3 merge_module_temporal.py --simulate',
     'python3 merge_module_analysis.py',
     'python3 antinomy_resolver.py --simulate',

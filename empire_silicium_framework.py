@@ -14,6 +14,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import argparse
 from typing import List, Dict, Any, Optional, Set, Tuple, Union
+from symbolic_stability import SymbolicStabilityEngine
 
 # ==============================
 # Propositional Logic Core
@@ -393,7 +394,16 @@ def run_simulation():
 
     final_states = torch.stack(final_states)  # [num_prime, d_model]
 
+    # 2.5 Evaluate Symbolic Stability
+    print("\n--- 3. Symbolic Stability Analysis ---")
+    stability_engine = SymbolicStabilityEngine(dim=embeddings.shape[1])
+    stability_metrics = stability_engine(final_states)
+    print(f"Global Coherence: {stability_metrics['coherence']:.4f}")
+    print(f"Structural Stability: {stability_metrics['stability']:.4f}")
+    print(f"System Confidence: {stability_metrics['confidence']:.4f}")
+
     # 3. Filter stable tokens by low entropy
+    print("\n--- 4. Filtering Stable Tokens ---")
     entropies = torch.tensor([
         deliberator.harmonic_entropy(state.unsqueeze(0).unsqueeze(0)).item()
         for state in final_states
@@ -401,8 +411,8 @@ def run_simulation():
     stable_tokens = [prime_tokens[i] for i, e in enumerate(entropies) if e < 0.1]
     print(f"Identified {len(stable_tokens)} stable tokens with harmonic entropy < 0.1")
 
-    # 4. Propositional evaluation
-    print("\n--- 4. Propositional Logic Evaluation ---")
+    # 5. Propositional evaluation
+    print("\n--- 5. Propositional Logic Evaluation ---")
     if stable_tokens:
         evaluator = PropositionalEvaluator(stable_tokens)
         formulas = evaluator.create_example_formulas()
