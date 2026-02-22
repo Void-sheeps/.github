@@ -23,29 +23,32 @@ class Formula:
     def __eq__(self, other): return isinstance(other, Formula) and self.__class__ == other.__class__ and self.eq(other)
     def v(self, valuation: Set['Atom']) -> bool: raise NotImplementedError()
     def _t(self, left: List['Formula'], right: List['Formula']):
-        while True:
-            found = True
-            for item in left:
-                if item in right: return None
-                if not isinstance(item, Atom):
-                    left.remove(item)
-                    tup = item._tleft(left,right)
-                    left,right = tup[0]
-                    if len(tup)>1:
-                        v = self._t(*tup[1])
-                        if v is not None: return v
-                    found = False; break
-            for item in right:
-                if item in left: return None
-                if not isinstance(item, Atom):
-                    right.remove(item)
-                    tup = item._tright(left,right)
-                    left,right = tup[0]
-                    if len(tup)>1:
-                        v = self._t(*tup[1])
-                        if v is not None: return v
-                    found = False; break
-            if found: return set(left)
+        # Check for immediate contradiction
+        for item in left:
+            if item in right: return None
+
+        # Decompose left formulas
+        for i, item in enumerate(left):
+            if not isinstance(item, Atom):
+                remaining_left = left[:i] + left[i+1:]
+                branches = item._tleft(remaining_left, right)
+                for branch in branches:
+                    res = self._t(*branch)
+                    if res is not None: return res
+                return None
+
+        # Decompose right formulas
+        for i, item in enumerate(right):
+            if not isinstance(item, Atom):
+                remaining_right = right[:i] + right[i+1:]
+                branches = item._tright(left, remaining_right)
+                for branch in branches:
+                    res = self._t(*branch)
+                    if res is not None: return res
+                return None
+
+        # If all are atoms and no contradictions found
+        return set(left)
     def t(self): return self._t([], [self])
     def _tleft(self, left, right): raise NotImplementedError
     def _tright(self, left, right): raise NotImplementedError

@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 from merge_module_temporal import MergeModuleTemporal
+from antinomy_resolver import NeuralAntinomy
 
 def run_analysis():
     print("Running Merge Module Temporal Analysis...")
@@ -32,14 +33,21 @@ def run_analysis():
         for j in range(n):
             sim_matrix[i, j] = MergeModuleTemporal.similarity_metric(embeddings[i], embeddings[j])
 
-    # 2. Run Merge Module
-    module = MergeModuleTemporal(similarity_threshold=0.2, retro_convergence=0.5)
+    # 2. Run Standard Merge Module
+    module = MergeModuleTemporal(similarity_threshold=0.7, retro_convergence=0.5)
     merged_tokens, merged_embs = module(tokens, embeddings)
 
-    print(f"Original tokens: {tokens}")
-    print(f"Merged tokens: {merged_tokens}")
+    # 3. Run Antinomy-Aware Merge Module
+    # We'll use a very low conflict threshold to force some inconsistencies for demonstration
+    resolver = NeuralAntinomy(embedding_dim=4, max_steps=5, conflict_threshold=0.01)
+    module_antinomy = MergeModuleTemporal(similarity_threshold=0.7, retro_convergence=0.5, antinomy_resolver=resolver)
+    merged_tokens_anti, _ = module_antinomy(tokens, embeddings)
 
-    # 3. Plotting
+    print(f"Original tokens: {tokens}")
+    print(f"Standard Merged tokens: {merged_tokens}")
+    print(f"Antinomy-Aware Merged tokens: {merged_tokens_anti}")
+
+    # 4. Plotting
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
 
     # Heatmap of initial similarities
@@ -47,9 +55,11 @@ def run_analysis():
                 cmap="YlGnBu", ax=ax1)
     ax1.set_title("Initial Token Similarity Matrix")
 
-    # Bar chart of output token counts (simulating multiple runs or just showing the reduction)
-    ax2.bar(["Original", "Merged"], [len(tokens), len(merged_tokens)], color=['blue', 'orange'])
-    ax2.set_title("Token Compression via Merging")
+    # Bar chart of output token counts
+    labels = ["Original", "Std Merged", "Anti-Aware"]
+    counts = [len(tokens), len(merged_tokens), len(merged_tokens_anti)]
+    ax2.bar(labels, counts, color=['blue', 'orange', 'green'])
+    ax2.set_title("Token Compression Comparison")
     ax2.set_ylabel("Number of Tokens")
 
     plt.tight_layout()

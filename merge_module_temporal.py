@@ -5,25 +5,29 @@ merge_module_temporal.py - Merge module with timing and retro-convergence
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import time
 import argparse
-from typing import List, Tuple
+from typing import List, Tuple, Optional
+from antinomy_resolver import NeuralAntinomy, Atom
 
 class MergeModuleTemporal(nn.Module):
-    def __init__(self, similarity_threshold: float = 0.5, retro_convergence: float = 0.2):
+    def __init__(self, similarity_threshold: float = 0.5, retro_convergence: float = 0.2, antinomy_resolver: Optional[NeuralAntinomy] = None):
         """
         Args:
             similarity_threshold: Minimum similarity to merge tokens.
             retro_convergence: Weight of previous merge embeddings influencing current step.
+            antinomy_resolver: Optional NeuralAntinomy module to detect and handle conflicts.
         """
         super().__init__()
         self.similarity_threshold = similarity_threshold
         self.retro_convergence = retro_convergence
+        self.antinomy_resolver = antinomy_resolver
         self.previous_merges = {}
 
     @staticmethod
     def similarity_metric(vec1: torch.Tensor, vec2: torch.Tensor) -> float:
-        return (vec1 * vec2).sum().item() / vec1.numel()
+        return F.cosine_similarity(vec1.unsqueeze(0), vec2.unsqueeze(0)).item()
 
     @staticmethod
     def fuse_embeddings(vec1: torch.Tensor, vec2: torch.Tensor) -> torch.Tensor:
@@ -33,11 +37,27 @@ class MergeModuleTemporal(nn.Module):
         input_start_time = time.time()
 
         current_tokens = tokens.copy()
-        current_embs = [embeddings[i].clone() for i in range(embeddings.size(0))]
+        current_embs_list = [embeddings[i].clone() for i in range(embeddings.size(0))]
 
         step = 0
         while True:
             n = len(current_tokens)
+            if n <= 1:
+                break
+
+            current_embs_tensor = torch.stack(current_embs_list)
+
+            # Phase 0: Antinomy Resolution at each step
+            inconsistent_indices = set()
+            if self.antinomy_resolver is not None:
+                atoms = [Atom(t) for t in current_tokens]
+                current_embs_tensor, conflict_scores, inconsistent_atoms = self.antinomy_resolver(current_embs_tensor, atoms)
+                inconsistent_names = {a.name for a in inconsistent_atoms}
+                inconsistent_indices = {i for i, t in enumerate(current_tokens) if t in inconsistent_names}
+                if inconsistent_indices:
+                    print(f"  [Antinomy] Inconsistency detected in tokens: {[current_tokens[i] for i in inconsistent_indices]}")
+
+            current_embs = [current_embs_tensor[i] for i in range(current_embs_tensor.size(0))]
             if n <= 1:
                 break
 
@@ -54,6 +74,11 @@ class MergeModuleTemporal(nn.Module):
                 for j in range(i + 1, n):
                     if j in merged_indices:
                         continue
+
+                    # Heuristic: Block merging if either token is inconsistent
+                    if i in inconsistent_indices or j in inconsistent_indices:
+                        continue
+
                     score = self.similarity_metric(current_embs[i], current_embs[j])
                     if score >= best_score:
                         best_score = score
@@ -81,7 +106,7 @@ class MergeModuleTemporal(nn.Module):
                     merged_indices.add(i)
 
             current_tokens = new_tokens
-            current_embs = new_embs
+            current_embs_list = new_embs
             step += 1
 
             if not merge_occurred:
@@ -91,7 +116,7 @@ class MergeModuleTemporal(nn.Module):
         print(f"[MergeModuleTemporal] Steps: {step}, Input time: {input_start_time:.4f}s, "
               f"Output time: {output_time:.4f}s, Duration: {output_time-input_start_time:.4f}s")
 
-        merged_embeddings = torch.stack(current_embs) if current_embs else torch.empty(0)
+        merged_embeddings = torch.stack(current_embs_list) if current_embs_list else torch.empty(0)
         return current_tokens, merged_embeddings
 
 def run_simulation():
@@ -104,8 +129,8 @@ def run_simulation():
         [0.15, 0.85, 0.0]
     ])
 
-    # Using a lower threshold to ensure merging occurs in this example
-    merge_module = MergeModuleTemporal(similarity_threshold=0.2, retro_convergence=0.3)
+    # Threshold 0.7 works now with cosine similarity
+    merge_module = MergeModuleTemporal(similarity_threshold=0.7, retro_convergence=0.3)
 
     # 1st run
     print("\nInitial tokens:", tokens)
