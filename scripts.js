@@ -267,6 +267,8 @@ function getCompilationMessages() {
     'python3 round_mask_analysis.py',
     'python3 merge_module_temporal.py --simulate',
     'python3 merge_module_analysis.py',
+    'python3 antinomy_resolver.py --simulate',
+    'python3 antinomy_analysis.py',
     'linking modules...',
     'Dictionary Verification: Passed',
     'Fermi-Dirac symmetry: Verified (1.0)',
