@@ -1,7 +1,9 @@
 import torch
+import torch.nn as nn
 import argparse
+import json
 
-# Lista realista de ~100+ mnemonics x86/amd64 (amostra — pode expandir com Intel SDM ou felixcloutier)
+# Lista realista de ~100+ mnemonics x86/amd64
 MNEMONICS = [
     "AAA", "AAD", "AAM", "AAS", "ADC", "ADD", "ADDPD", "ADDPS", "ADDSD", "ADDSS",
     "ADDSUBPD", "ADDSUBPS", "AND", "ANDNPD", "ANDNPS", "ANDPD", "ANDPS",
@@ -87,49 +89,123 @@ MNEMONICS = [
     "XOR", "XORPD", "XORPS", "XRSTOR", "XSAVE", "XSETBV", "XTEST"
 ]
 
+def build_n2_matrix(N: int, device="cpu") -> torch.Tensor:
+    """
+    Expande N^2 em vetores R^3 como definido pelo usuário.
+    """
+    nm1_sq = float((N - 1)**2)
+    row1 = [nm1_sq, float(N - 1), float(N)]
+    row2 = [nm1_sq, float(2 * N), -1.0]
+    row3 = [nm1_sq, 0.0, float(2 * (N - 0.5))]
+    row4 = [nm1_sq, float(2 * (N - 0.5)), 0.0]
+
+    return torch.tensor([row1, row2, row3, row4], dtype=torch.float32, device=device)
+
+class N2ReferenceEmbedding(nn.Module):
+    """
+    Embedding determinístico baseado na expansão N².
+    Projeta o vetor 12D para d_model.
+    """
+    def __init__(self, d_model: int):
+        super().__init__()
+        self.d_model = d_model
+        # Projeção linear para o espaço d_model
+        self.projection = nn.Linear(12, d_model)
+
+    def forward(self, N_tokens: torch.Tensor):
+        # N_tokens: tensor de índices [batch_size, seq_len]
+        batch_size, seq_len = N_tokens.shape
+        embeddings = []
+
+        for b in range(batch_size):
+            seq_embeddings = []
+            for s in range(seq_len):
+                N = N_tokens[b, s].item() + 1 # +1 pois N começa em 1 na lógica do usuário
+                matrix = build_n2_matrix(N, device=N_tokens.device)
+                flattened = matrix.flatten()
+                seq_embeddings.append(flattened)
+            embeddings.append(torch.stack(seq_embeddings))
+
+        x = torch.stack(embeddings) # [batch_size, seq_len, 12]
+        return self.projection(x)
+
+class MnemonicTransformer(nn.Module):
+    """
+    Sistema de processamento de mnemônicos x86.
+    Integra N2ReferenceEmbedding com camadas de atenção.
+    """
+    def __init__(self, d_model: int, nhead: int, num_layers: int):
+        super().__init__()
+        self.embedding = N2ReferenceEmbedding(d_model=d_model)
+
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            batch_first=True
+        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.fc_out = nn.Linear(d_model, d_model)
+
+    def forward(self, N_tokens: torch.Tensor):
+        x = self.embedding(N_tokens)
+        output = self.transformer(x)
+        return self.fc_out(output)
+
 class MnemonicTracer:
     def __init__(self, mnemonics, device="cpu"):
         self.device = torch.device(device)
         self.mnemonics = mnemonics
 
-    def build_state(self, N: int) -> torch.Tensor:
-        nm1 = N - 1
-        return torch.tensor([nm1**2, float(nm1), float(N)], device=self.device)
-
-    def reflect(self, state: torch.Tensor, idx: int = 2) -> torch.Tensor:
-        state = state.clone()
-        state[idx] = 2 * state[idx] - 1
-        return state
-
-    def expand(self, state: torch.Tensor, sequence=None) -> torch.Tensor:
-        if sequence is None:
-            sequence = [0, 1, 2, 3]
-        seq = torch.tensor(sequence, dtype=torch.float32, device=self.device)
-        expanded = [(state[i] + seq)**2 for i in range(len(state))]
-        return torch.cat(expanded)
-
-    def project(self, state: torch.Tensor) -> float:
-        return state.sum().item()
-
-    def run_tracert(self, max_items: int = 40):
-        print(f"{'#':3} | {'Mnemonic':12} | {'N':4} | {'Proj':12} | {'State (expanded preview)'}")
+    def run_tracert(self, max_items: int = 40, export_json: bool = False):
+        print(f"{'#':3} | {'Mnemonic':12} | {'N':4} | {'Proj':12} | {'Flattened Preview'}")
         print("-" * 100)
+
+        token_table = {}
         for idx, mnem in enumerate(self.mnemonics[:max_items], start=1):
-            state = self.build_state(idx)
-            reflected = self.reflect(state)
-            expanded = self.expand(reflected)
-            proj = self.project(expanded)
-            vec_preview = ", ".join(f"{int(x.item())}" for x in expanded[:8])
-            if len(expanded) > 8:
-                vec_preview += ", …"
-            print(f"{idx:3d} | {mnem:12} | {idx:4d} | {proj:12.0f} | {vec_preview}")
+            matrix = build_n2_matrix(idx, device=self.device)
+            flattened = matrix.flatten()
+            proj = matrix.sum().item()
+
+            vec_preview = ", ".join(f"{x.item():.1f}" for x in flattened[:6])
+            print(f"{idx:3d} | {mnem:12} | {idx:4d} | {proj:12.1f} | {vec_preview}, …")
+
+            if export_json:
+                token_table[f"N{idx}"] = {
+                    "mnemonic": mnem,
+                    "matrix": matrix.tolist(),
+                    "vector": flattened.tolist(),
+                    "projection": proj
+                }
+
+        if export_json:
+            with open("mnemonic_data.json", "w") as f:
+                json.dump(token_table, f, indent=2)
+            print(f"\nResults exported to mnemonic_data.json")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Mnemonic Tracer Simulation")
+    parser = argparse.ArgumentParser(description="Mnemonic Tracer and Transformer Simulation")
     parser.add_argument("--simulate", action="store_true", help="Run the tracer simulation")
+    parser.add_argument("--json", action="store_true", help="Export results to mnemonic_data.json")
+    parser.add_argument("--transformer", action="store_true", help="Run MnemonicTransformer forward pass")
     parser.add_argument("--max_items", type=int, default=50, help="Maximum number of items to trace")
     args = parser.parse_args()
 
-    if args.simulate or not any(vars(args).values()):
+    if args.transformer:
+        print("\n--- MnemonicTransformer Simulation ---")
+        d_model = 512
+        nhead = 8
+        num_layers = 4
+        model = MnemonicTransformer(d_model, nhead, num_layers)
+
+        # Exemplo: batch de 2 sequências de 5 mnemônicos cada
+        # Índices aleatórios entre 0 e len(MNEMONICS)-1
+        sample_tokens = torch.randint(0, len(MNEMONICS), (2, 5))
+
+        output = model(sample_tokens)
+        print(f"Input Tokens (Indices):\n{sample_tokens}")
+        print(f"Output Shape: {output.shape} (batch, seq, d_model)")
+        print(f"Sample Output (first sequence, first token, first 8 components):\n{output[0, 0, :8]}")
+
+    if args.simulate or args.json or (not args.transformer and not any(vars(args).values())):
         tracer = MnemonicTracer(MNEMONICS)
-        tracer.run_tracert(max_items=args.max_items)
+        tracer.run_tracert(max_items=args.max_items, export_json=args.json or args.simulate)
