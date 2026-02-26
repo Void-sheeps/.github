@@ -21,6 +21,7 @@ class SimpleAttention(nn.Module):
         V = self.v(x)
 
         # Scalar attention: Softmax(QK^T / sqrt(d)) * V
+        # Note: We use self.dim for normalization as defined in the user's snippet
         scores = torch.matmul(Q, K.transpose(-2, -1)) / (self.dim ** 0.5)
         weights = F.softmax(scores, dim=-1)
         out = torch.matmul(weights, V)
@@ -30,23 +31,25 @@ class SimpleAttention(nn.Module):
         return out
 
 class SymbolicAttentionEngine:
-    def __init__(self, n_value=1.0):
+    def __init__(self, n_value=1.618):
         # N simbólico
         self.N = sp.Symbol('N', real=True)
         self.n_value = n_value
 
-        # Vocabulário baseado na especificação do usuário
-        # Nota: Corrigimos inconsistências visuais no vocab para alinhar com a lógica de N^2
+        # Vocabulário baseado na nova especificação do usuário
         self.vocab = [
+            "N^2=",
             "[(N-1)^2], [(N-1)], [(N)]",
-            "[(N-1)^2], [(2N)], [(-1)]",
-            "[(N-1)^2], [(0)], [(2(N-0.5))]",
+            "[(N-1)^2], [(2*N)], [(-1)]",
+            "[(N-1)^2], [(0)], [(2*(N-0.5))]",
             "[(N-1)^2], [(2*(N-0.5))], [(0)]"
         ]
 
         # Criação de embeddings simbólicos (Matrizes sp.Matrix)
-        # Cada vetor possui 4 dimensões. A soma dos primeiros 3 elementos resulta em N^2.
+        # Cada vetor possui 4 dimensões.
+        # Corrigimos os typos de (N-1)*2 para (N-1)**2 para alinhar com os nomes dos tokens.
         self.emb_vectors = [
+            sp.Matrix([self.N**2, 0, 0, 0]),           # Para "N^2="
             sp.Matrix([(self.N-1)**2, self.N-1, self.N, 0]),
             sp.Matrix([(self.N-1)**2, 2*self.N, -1, 0]),
             sp.Matrix([(self.N-1)**2, 0, 2*(self.N-0.5), 0]),
@@ -76,33 +79,42 @@ class SymbolicAttentionEngine:
 
     def process_sequence(self, sequence_tokens, return_weights=False):
         """Converte tokens em índices, busca embeddings e aplica atenção."""
-        input_indices = torch.tensor([self.token_to_idx[tok] for tok in sequence_tokens])
+        input_indices = torch.tensor([self.token_to_idx[tok] for tok in sequence_tokens if tok in self.token_to_idx])
+        if input_indices.numel() == 0:
+            return None, None
+
         x = self.embeddings(input_indices)
         return self.attention(x, return_weights=return_weights), x
 
-def run_simulation(n_val=1.0):
+def run_simulation(n_val=1.618):
     print(f"--- Symbolic N Attention Simulation (N={n_val}) ---")
     engine = SymbolicAttentionEngine(n_value=n_val)
 
     print("\nVocabulário e Embeddings Numéricos:")
     for i, tok in enumerate(engine.vocab):
         vec = engine.embeddings.weight[i].tolist()
-        soma_triade = sum(vec[:3])
-        print(f"Token {i}: {tok}")
-        print(f"  Vetor: {[round(v, 4) for v in vec]}")
-        print(f"  Soma (Triade): {soma_triade:.4f} (N^2 Alvo: {n_val**2:.4f})")
+        # Verificamos a soma dos 3 primeiros componentes para os tokens de tríade
+        if i > 0:
+            soma_triade = sum(vec[:3])
+            print(f"Token {i}: {tok}")
+            print(f"  Vetor: {[round(v, 4) for v in vec]}")
+            print(f"  Soma (Triade): {soma_triade:.4f} (N^2 Alvo: {n_val**2:.4f})")
+        else:
+            print(f"Token {i}: {tok}")
+            print(f"  Vetor: {[round(v, 4) for v in vec]} (Alvo: {n_val**2:.4f})")
 
     sequence = engine.vocab
     output, x = engine.process_sequence(sequence)
 
-    print("\nTokens na Sequência:")
-    print(sequence)
+    if output is not None:
+        print("\nTokens na Sequência:")
+        print(sequence)
 
-    print("\nEmbeddings iniciais (x):")
-    print(x)
+        print("\nEmbeddings iniciais (x):")
+        print(x)
 
-    print("\nEmbeddings após atenção (interferência contextual):")
-    print(output)
+        print("\nEmbeddings após atenção (interferência contextual):")
+        print(output)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Symbolic N Attention System")
