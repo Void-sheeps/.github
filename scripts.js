@@ -282,6 +282,8 @@ function getCompilationMessages() {
     'python3 routing_analysis.py',
     'python3 mnemonic_tracer.py --simulate',
     'python3 mnemonic_analysis.py',
+    'python3 atomic_attention.py --simulate',
+    'python3 atomic_attention_analysis.py',
     'Applying Logarithmic Intensity: 4.6151',
     'Calculating Cartesian Resultant...',
     'Semantic Alignment (MAE vs LIMITE): Verified',
