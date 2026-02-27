@@ -39,7 +39,8 @@ class PolynomialSpace:
             )
         except TypeError:
             # Fallback for non-numeric coefficients (symbolic remnants)
-            return torch.zeros(self.degree + 1)
+            # Signal invalid embedding with NaNs
+            return torch.full((self.degree + 1,), float('nan'))
 
     def equivalent(self, expr_a, expr_b):
         return sp.simplify(expr_a - expr_b) == 0
@@ -142,6 +143,16 @@ class StructuralAttention(nn.Module):
             return out, weights
         return out
 
+# ==========================================================
+# 2) Sqrt Morphism (Approximate Mapping)
+# ==========================================================
+
+class SqrtMorphism(nn.Module):
+    def forward(self, v):
+        # Approximate entry-wise (non-symbolic)
+        # Maintaining float dtype for vector consistency
+        return torch.sqrt(torch.abs(v))  # square root of absolute value
+
 def cohesion_matrix(matrix):
     normed = F.normalize(matrix, dim=1)
     return torch.matmul(normed, normed.T)
@@ -165,11 +176,17 @@ def run_simulation():
     vectors = {}
     for name, expr in expressions.items():
         try:
-            vectors[name] = space.register_expression(name, expr)
+            vec = space.register_expression(name, expr)
+            if not torch.isnan(vec).any():
+                vectors[name] = vec
         except (TypeError, sp.PolynomialError):
             continue
 
     token_list = list(vectors.keys())
+    if not token_list:
+        print("No valid polynomial tokens found.")
+        return
+
     embedding_matrix = torch.stack([vectors[t] for t in token_list])
 
     # 4) Structural Cohesion (Cosine Similarity)
@@ -179,7 +196,11 @@ def run_simulation():
     attention = StructuralAttention(embedding_matrix.shape[1])
     contextualized, weights = attention(embedding_matrix, return_weights=True)
 
-    # 6) Output
+    # 6) Sqrt Morphism (Approximate)
+    sqrt_op = SqrtMorphism()
+    sqrt_vectors = sqrt_op(contextualized)
+
+    # 7) Output
     print("=== Canonical Structural Vectors ===")
     for name in token_list:
         print(f"{name} → {vectors[name]}")
@@ -204,6 +225,9 @@ def run_simulation():
 
     print("\n=== Contextualized Representations ===")
     print(contextualized)
+
+    print("\n=== Raiz Quadrada Aproximada do Embedding ===")
+    print(sqrt_vectors)
 
     print("\n=== Input Validation (Dependency Aware) ===")
     test_values = [0, 6]
