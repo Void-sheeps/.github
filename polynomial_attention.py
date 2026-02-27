@@ -10,15 +10,19 @@ import argparse
 
 class PolynomialSpace:
     def __init__(self, variable='x', degree=2):
-        self.variable = sp.Symbol(variable)
+        self.variable = sp.Symbol(variable, real=True)
         self.degree = degree
 
     def canonical(self, expr):
         expanded = sp.expand(expr)
 
         if expanded.has(self.variable):
-            poly = sp.Poly(expanded, self.variable)
-            coeffs = poly.all_coeffs()
+            try:
+                poly = sp.Poly(expanded, self.variable)
+                coeffs = poly.all_coeffs()
+            except sp.PolynomialError:
+                # Handle cases where expansion results in non-polynomials (e.g. Abs(x))
+                coeffs = [expanded]
         else:
             coeffs = [expanded]
 
@@ -35,6 +39,33 @@ class PolynomialSpace:
 
     def equivalent(self, expr_a, expr_b):
         return sp.simplify(expr_a - expr_b) == 0
+
+    def detect_non_injective_inversion(self, expr):
+        issues = []
+
+        # Check the expression itself after simplification
+        simplified_top = sp.simplify(expr)
+        if simplified_top.has(sp.Abs):
+            issues.append(f"Implicit absolute value introduced: {simplified_top}")
+
+        for node in sp.preorder_traversal(expr):
+            # Detect sqrt(expr)
+            if isinstance(node, sp.Pow) and node.exp == sp.Rational(1, 2):
+                inner = node.base
+
+                if isinstance(inner, sp.Pow) and inner.exp % 2 == 0:
+                    issues.append(
+                        f"Non-injective inversion: sqrt({inner})"
+                    )
+
+                # Check if simplification of this node introduces Abs
+                simplified = sp.simplify(node)
+                if simplified.has(sp.Abs) and f"Implicit absolute value introduced: {simplified}" not in issues:
+                    issues.append(
+                        f"Implicit absolute value introduced: {simplified}"
+                    )
+
+        return list(set(issues))
 
 
 # ==========================================================
@@ -76,14 +107,17 @@ def run_simulation():
         "E2": (x-1)**2 + (x-1) + x,              # structurally equal to x^2
         "E3": (x-2)**2 + 4*x - 4,                # structurally equal to x^2
         "E4": sp.pi**2,
-        "E5": (sp.pi-1)**2 + 2*sp.pi - 1         # structurally equal to π^2
+        "E5": (sp.pi-1)**2 + 2*sp.pi - 1,        # structurally equal to π^2
+        "E6": sp.sqrt(x**2)
     }
 
     # 3) Canonical Projection (Algebra → Vector)
-    vectors = {
-        name: space.canonical(expr)
-        for name, expr in expressions.items()
-    }
+    vectors = {}
+    for name, expr in expressions.items():
+        try:
+            vectors[name] = space.canonical(expr)
+        except (TypeError, sp.PolynomialError):
+            continue
 
     token_list = list(vectors.keys())
     embedding_matrix = torch.stack([vectors[t] for t in token_list])
@@ -111,6 +145,12 @@ def run_simulation():
                 expressions[token_list[j]]
             ):
                 print(f"{token_list[i]} ≡ {token_list[j]}")
+
+    print("\n=== Dependency Analysis ===")
+    for name, expr in expressions.items():
+        issues = space.detect_non_injective_inversion(expr)
+        for issue in issues:
+            print(f"{name} → {issue}")
 
     print("\n=== Contextualized Representations ===")
     print(contextualized)
