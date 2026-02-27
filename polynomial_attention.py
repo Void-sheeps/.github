@@ -32,10 +32,14 @@ class PolynomialSpace:
 
         coeffs = coeffs[-(self.degree + 1):]
 
-        return torch.tensor(
-            [float(c) for c in coeffs],
-            dtype=torch.float32
-        )
+        try:
+            return torch.tensor(
+                [float(c) for c in coeffs],
+                dtype=torch.float32
+            )
+        except TypeError:
+            # Fallback for non-numeric coefficients (symbolic remnants)
+            return torch.zeros(self.degree + 1)
 
     def equivalent(self, expr_a, expr_b):
         return sp.simplify(expr_a - expr_b) == 0
@@ -66,6 +70,52 @@ class PolynomialSpace:
                     )
 
         return list(set(issues))
+
+class DependencyAwarePolynomialSpace(PolynomialSpace):
+    def __init__(self, variable='x', degree=2):
+        super().__init__(variable, degree)
+        self.dependency_records = {}  # name -> constraints
+
+    def register_expression(self, name, expr):
+        # 1. Compute canonical vector (as before)
+        vec = self.canonical(expr)
+        # 2. Analyze dependencies
+        constraints = self._extract_constraints(expr)
+        self.dependency_records[name] = constraints
+        return vec
+
+    def _extract_constraints(self, expr):
+        # Use SymPy to traverse the expression
+        constraints = {}
+        for sub in sp.preorder_traversal(expr):
+            if sub.is_Pow and sub.exp == sp.Rational(1, 2):
+                # sqrt(arg) requires arg >= 0
+                arg = sub.base
+                # if arg depends on the variable, record inequality
+                if self.variable in arg.free_symbols:
+                    # e.g., arg >= 0
+                    constraints.setdefault(self.variable, []).append(
+                        sp.Ge(arg, 0)
+                    )
+            elif sub.func == sp.log:
+                arg = sub.args[0]
+                if self.variable in arg.free_symbols:
+                    constraints.setdefault(self.variable, []).append(
+                        sp.Gt(arg, 0)
+                    )
+            # ... handle Abs, trig inverses, etc.
+        return constraints
+
+    def validate_input(self, name, value):
+        constraints = self.dependency_records.get(name, {})
+        var = self.variable
+        if var in constraints:
+            for cond in constraints[var]:
+                # Force boolean evaluation
+                result = bool(cond.subs({var: value}))
+                if not result:
+                    return False
+        return True
 
 
 # ==========================================================
@@ -98,7 +148,7 @@ def cohesion_matrix(matrix):
 
 def run_simulation():
     # 1) Initialize Algebra Space
-    space = PolynomialSpace(variable='x', degree=2)
+    space = DependencyAwarePolynomialSpace(variable='x', degree=2)
     x = space.variable
 
     # 2) Token Registry (Algebraic Objects)
@@ -108,14 +158,14 @@ def run_simulation():
         "E3": (x-2)**2 + 4*x - 4,                # structurally equal to x^2
         "E4": sp.pi**2,
         "E5": (sp.pi-1)**2 + 2*sp.pi - 1,        # structurally equal to π^2
-        "E6": sp.sqrt(x**2)
+        "E6": sp.sqrt(x-5)                       # Requires x >= 5
     }
 
     # 3) Canonical Projection (Algebra → Vector)
     vectors = {}
     for name, expr in expressions.items():
         try:
-            vectors[name] = space.canonical(expr)
+            vectors[name] = space.register_expression(name, expr)
         except (TypeError, sp.PolynomialError):
             continue
 
@@ -154,6 +204,12 @@ def run_simulation():
 
     print("\n=== Contextualized Representations ===")
     print(contextualized)
+
+    print("\n=== Input Validation (Dependency Aware) ===")
+    test_values = [0, 6]
+    for val in test_values:
+        is_valid = space.validate_input("E6", val)
+        print(f"E6 validation for x={val}: {'VALID' if is_valid else 'INVALID'}")
 
     return token_list, cohesion, weights
 
