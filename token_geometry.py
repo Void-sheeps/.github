@@ -12,6 +12,27 @@ class TokenGeometry(nn.Module):
         # projeção linear (como uma mudança de base)
         self.linear = nn.Linear(embedding_dim, embedding_dim, bias=False)
 
+        # Estados Pré-setados (Contextos conhecidos)
+        self.preset_contexts = {}
+
+    def register_preset(self, label, token_ids):
+        """Armazena a assinatura contextual (pesos de atenção) de uma sequência conhecida."""
+        with torch.no_grad():
+            _, weights = self.contextual_relation(token_ids)
+            self.preset_contexts[label] = weights
+
+    def compare_context_to_preset(self, current_token_ids, label):
+        """Mede a divergência entre o contexto atual e um pré-setado."""
+        if label not in self.preset_contexts:
+            return None
+
+        _, current_weights = self.contextual_relation(current_token_ids)
+        preset_weights = self.preset_contexts[label]
+
+        # Diferença de Frobenius entre as matrizes de atenção
+        diff = torch.norm(current_weights - preset_weights)
+        return diff
+
     def angle_between(self, token_a, token_b):
         e1 = self.embedding(token_a)
         e2 = self.embedding(token_b)
@@ -44,6 +65,10 @@ def run_simulation():
     embedding_dim = 4
     model = TokenGeometry(vocab_size, embedding_dim)
 
+    # Registro de Contexto Pré-setado
+    hello_world = torch.tensor([1, 2]) # [HELLO, WORLD]
+    model.register_preset("HELLO_WORLD", hello_world)
+
     token_a = torch.tensor([1])
     token_b = torch.tensor([2])
 
@@ -60,6 +85,11 @@ def run_simulation():
     print(weights.detach())
     print("\nContextualized Vectors:")
     print(context.detach())
+
+    print("\n=== Context Comparison (Raw vs Preset) ===")
+    raw_seq = torch.tensor([5, 6])
+    diff = model.compare_context_to_preset(raw_seq, "HELLO_WORLD")
+    print(f"Divergence (Raw [5,6] vs Preset 'HELLO_WORLD'): {diff.item():.4f}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Token Geometry Analysis")

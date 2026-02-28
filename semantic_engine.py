@@ -32,7 +32,9 @@ class SemanticEngine(nn.Module):
             "CAOS": 99.0,
             "CAIS": 8.0,
             "MAE": 100.0,
-            "LIMITE": 50.0
+            "LIMITE": 50.0,
+            "HELLO": 10.0,
+            "LOREM": 15.0
         }
 
         # --- 3. A ÁLGEBRA (Operadores) ---
