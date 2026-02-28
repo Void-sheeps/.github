@@ -226,6 +226,16 @@ def run_simulation():
     print("\n=== Contextualized Representations ===")
     print(contextualized)
 
+    # Estatísticas da token_list
+    num_tokens = len(token_list)
+    token_lengths = [len(t) for t in token_list]
+    avg_token_length = sum(token_lengths) / num_tokens
+
+    print("\n=== Estatísticas da token_list ===")
+    print("Número de tokens:", num_tokens)
+    print("Comprimento de cada token:", token_lengths)
+    print("Comprimento médio dos tokens:", avg_token_length)
+
     print("\n=== Raiz Quadrada Aproximada do Embedding ===")
     print(sqrt_vectors)
 

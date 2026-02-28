@@ -8,32 +8,38 @@ def run_analysis():
 
     token_list, cohesion, weights = run_simulation()
 
-    # Create visualization
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+    # Create visualization side-by-side
+    fig, axes = plt.subplots(1, 2, figsize=(15, 6))
 
-    # 1. Structural Cohesion Matrix
+    # 1. Structural Cohesion Matrix (Inicial)
     sns.heatmap(
         cohesion.detach().numpy(),
         annot=True,
         fmt=".2f",
+        cmap="Greens",
         xticklabels=token_list,
         yticklabels=token_list,
-        cmap="YlGnBu",
-        ax=ax1
+        cbar_kws={'label': 'Cohesion'},
+        ax=axes[0]
     )
-    ax1.set_title("Structural Cohesion Matrix (Cosine Similarity)")
+    axes[0].set_title("Structural Cohesion (Inicial)")
+    axes[0].set_xlabel("Tokens de origem")
+    axes[0].set_ylabel("Tokens destino")
 
-    # 2. Structural Attention Weights
+    # 2. Attention Weights (Contextualizado)
     sns.heatmap(
         weights.detach().numpy(),
         annot=True,
         fmt=".2f",
+        cmap="YlGnBu",
         xticklabels=token_list,
         yticklabels=token_list,
-        cmap="Reds",
-        ax=ax2
+        cbar_kws={'label': 'Attention Weight'},
+        ax=axes[1]
     )
-    ax2.set_title("Structural Attention Weights")
+    axes[1].set_title("Attention Weights (Contextualizado)")
+    axes[1].set_xlabel("Tokens de origem")
+    axes[1].set_ylabel("Tokens destino")
 
     plt.tight_layout()
     plt.savefig("polynomial_analysis.png")
