@@ -1,12 +1,12 @@
 import torch
 import matplotlib.pyplot as plt
 import seaborn as sns
-from polynomial_attention import run_simulation
+from polynomial_attention import run_hex_simulation
 
 def run_analysis():
     print("Running Polynomial Structural Analysis...")
 
-    token_list, cohesion, weights = run_simulation()
+    token_list, cohesion, weights = run_hex_simulation()
 
     # Create visualization side-by-side
     fig, axes = plt.subplots(1, 2, figsize=(15, 6))
@@ -22,7 +22,7 @@ def run_analysis():
         cbar_kws={'label': 'Cohesion'},
         ax=axes[0]
     )
-    axes[0].set_title("Structural Cohesion (Inicial)")
+    axes[0].set_title("Structural Cohesion (Hex Float Vector)")
     axes[0].set_xlabel("Tokens de origem")
     axes[0].set_ylabel("Tokens destino")
 
@@ -37,7 +37,7 @@ def run_analysis():
         cbar_kws={'label': 'Attention Weight'},
         ax=axes[1]
     )
-    axes[1].set_title("Attention Weights (Contextualizado)")
+    axes[1].set_title("Attention Weights (Hex Tokens)")
     axes[1].set_xlabel("Tokens de origem")
     axes[1].set_ylabel("Tokens destino")
 

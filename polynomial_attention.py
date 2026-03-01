@@ -3,6 +3,29 @@ import torch.nn as nn
 import torch.nn.functional as F
 import sympy as sp
 import argparse
+import struct
+
+# ==========================================================
+# Hex-Canonical Extension
+# ==========================================================
+class HexCanonicalSpace:
+    def __init__(self, vector_dim):
+        self.dim = vector_dim
+
+    def to_hex(self, vector: torch.Tensor) -> str:
+        hex_parts = []
+        for val in vector:
+            packed = struct.pack('>f', val.item())
+            hex_parts.append(packed.hex().upper())
+        return ' '.join(hex_parts)
+
+    def from_hex(self, hex_str: str) -> torch.Tensor:
+        parts = hex_str.strip().split()
+        values = [struct.unpack('>f', bytes.fromhex(p))[0] for p in parts]
+        return torch.tensor(values, dtype=torch.float32)
+
+    def hex_equivalent(self, hex_a: str, hex_b: str) -> bool:
+        return torch.allclose(self.from_hex(hex_a), self.from_hex(hex_b), atol=1e-5)
 
 # ==========================================================
 # 0) Minimal mathlib Implementation
@@ -157,9 +180,10 @@ def cohesion_matrix(matrix):
     normed = F.normalize(matrix, dim=1)
     return torch.matmul(normed, normed.T)
 
-def run_simulation():
+def run_hex_simulation():
     # 1) Initialize Algebra Space
     space = DependencyAwarePolynomialSpace(variable='x', degree=2)
+    hex_space = HexCanonicalSpace(vector_dim=3)
     x = space.variable
 
     # 2) Token Registry (Algebraic Objects)
@@ -182,6 +206,7 @@ def run_simulation():
         except (TypeError, sp.PolynomialError):
             continue
 
+    hex_tokens = {name: hex_space.to_hex(vec) for name, vec in vectors.items()}
     token_list = list(vectors.keys())
     if not token_list:
         print("No valid polynomial tokens found.")
@@ -201,7 +226,11 @@ def run_simulation():
     sqrt_vectors = sqrt_op(contextualized)
 
     # 7) Output
-    print("=== Canonical Structural Vectors ===")
+    print("=== Hex Tokens ===")
+    for name in token_list:
+        print(f"{name} → {hex_tokens[name]}")
+
+    print("\n=== Canonical Structural Vectors ===")
     for name in token_list:
         print(f"{name} → {vectors[name]}")
 
@@ -253,4 +282,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.simulate:
-        run_simulation()
+        run_hex_simulation()
