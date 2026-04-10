@@ -116,6 +116,5 @@ if __name__ == "__main__":
     parser.add_argument("--steps", type=int, default=500, help="Number of training steps")
     args = parser.parse_args()
 
-    # Run by default if no other actions are specified, or if --simulate is passed
-    if args.simulate or True: # Currently always runs as there are no other action flags
-        run_simulation(steps=args.steps)
+    # Run simulation
+    run_simulation(steps=args.steps)
