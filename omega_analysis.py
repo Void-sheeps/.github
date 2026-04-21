@@ -50,7 +50,8 @@ def run_simulation(steps=500, lr=0.01):
         losses.append(loss.item())
 
         if step % 100 == 0:
-            print(f"Step {step:03d} | Loss: {loss.item():.6f} | Output: {output.item():.4f}")
+            res = output.item()
+            print(f"Step {step:03d} | Loss: {loss.item():.6f} | Output: {res.real:.4f} + {res.imag:.4f}j")
 
     # Final Inspection
     final_output = model(A, v)
@@ -61,8 +62,10 @@ def run_simulation(steps=500, lr=0.01):
     print(f"Kernel std: {model.kernel.std().item():.6f}")
 
     print("\n=== Final Output ===")
-    print(f"Actual: {final_output.item():.4f}")
-    print(f"Target: {target.item():.4f}")
+    res_f = final_output.item()
+    target_f = target.item()
+    print(f"Actual: {res_f.real:.4f} + {res_f.imag:.4f}j")
+    print(f"Target: {target_f.real:.4f} + {target_f.imag:.4f}j")
 
     # Visualization
     fig, axs = plt.subplots(2, 2, figsize=(12, 10))

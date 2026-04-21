@@ -59,7 +59,9 @@ def run_simulation(steps=600, lr=0.01):
     final_output = model(A, v).detach()
     print("\nFinal Output vs Target:")
     for h in range(H):
-        print(f"Head {h}: Actual {final_output[h].item():.4f} | Target {target[h].item():.4f}")
+        res_h = final_output[h].item()
+        target_h = target[h].item()
+        print(f"Head {h}: Actual {res_h.real:.4f} + {res_h.imag:.4f}j | Target {target_h.real:.4f} + {target_h.imag:.4f}j")
 
     # Visualization
     fig, axs = plt.subplots(2, 2, figsize=(12, 10))
