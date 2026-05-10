@@ -284,6 +284,8 @@ function getCompilationMessages() {
     'python3 mnemonic_analysis.py',
     'python3 atomic_attention.py --simulate',
     'python3 atomic_attention_analysis.py',
+    'python3 symbolic_prime_geometry.py --simulate',
+    'python3 prime_geometry_analysis.py',
     'Applying Logarithmic Intensity: 4.6151',
     'Calculating Cartesian Resultant...',
     'Semantic Alignment (MAE vs LIMITE): Verified',
