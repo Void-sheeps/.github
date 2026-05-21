@@ -1,10 +1,38 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+
+# ============================================================================
+# PARALLELISM REGIMES
+# ============================================================================
+
+class ParallelismRegime(Enum):
+    """
+    PARALLEL:
+        delta_norm below the parallel threshold and angular deformation
+        within bounds.
+
+    NON_PARALLEL:
+        delta_norm above the threshold, or angular deformation exceeds the
+        angular threshold despite metric proximity.
+
+    UNVERIFIABLE:
+        delta_norm falls within the uncertainty band around the parallel
+        threshold. The system cannot assert either regime. This is an
+        epistemic band around the decision boundary, not a region of
+        numerical identity.
+    """
+
+    PARALLEL      = "parallel"
+    NON_PARALLEL  = "non_parallel"
+    UNVERIFIABLE  = "unverifiable"
 
 
 # ============================================================================
@@ -130,6 +158,142 @@ class Node(nn.Module):
 
     def forward(self, *args, **kwargs) -> torch.Tensor:
         return self.op(*args, **kwargs)
+
+
+# ============================================================================
+# RELATIONAL DOMAIN & GEOMETRY
+# ============================================================================
+
+@dataclass
+class RelationalDomain:
+    """
+    D := [O, S]
+
+    A relational domain is the structural relation between:
+
+        O : substrate state      ∈ R^D
+        S : interpretive state   ∈ R^D
+    """
+
+    O:    torch.Tensor
+    S:    torch.Tensor
+    name: str = "D"
+
+    def __post_init__(self) -> None:
+        if self.O.shape != self.S.shape:
+            raise ValueError(
+                f"O and S must have the same shape; "
+                f"got O={tuple(self.O.shape)}, S={tuple(self.S.shape)}"
+            )
+
+    def internal_angle(self) -> torch.Tensor:
+        """
+        angle(O, S) — internal relational divergence within this domain.
+        """
+        cosine = F.cosine_similarity(
+            self.O.unsqueeze(0) if self.O.dim() == 1 else self.O,
+            self.S.unsqueeze(0) if self.S.dim() == 1 else self.S,
+            dim=-1,
+        ).clamp(-1.0, 1.0)
+
+        return torch.rad2deg(torch.acos(cosine))
+
+    def relational_vector(self) -> torch.Tensor:
+        """
+        R(D) := concat(O, S, O - S)  ∈ R^{3D}
+        """
+        return torch.cat([self.O, self.S, self.O - self.S], dim=-1)
+
+
+@dataclass
+class DomainDifference:
+    """
+    ΔD := relational deformation between D1 and D2.
+    """
+
+    D1:        RelationalDomain
+    D2:        RelationalDomain
+    angle:     torch.Tensor
+    magnitude: torch.Tensor  # normalized; dimension-independent
+    regime:    ParallelismRegime
+
+
+class RelationalGeometry:
+    """
+    Evaluates relational continuity between domains.
+    """
+
+    def __init__(
+        self,
+        parallel_threshold: float = 0.01,
+        unverifiable_band:  float = 0.002,
+        angular_threshold:  float = 10.0,    # degrees
+    ):
+        if unverifiable_band >= parallel_threshold:
+            raise ValueError(
+                f"unverifiable_band ({unverifiable_band}) must be strictly less "
+                f"than parallel_threshold ({parallel_threshold})"
+            )
+
+        self.parallel_threshold = parallel_threshold
+        self.unverifiable_band  = unverifiable_band
+        self.angular_threshold  = angular_threshold
+
+    def relational_angle(
+        self,
+        D1: RelationalDomain,
+        D2: RelationalDomain,
+    ) -> torch.Tensor:
+        R1 = D1.relational_vector()
+        R2 = D2.relational_vector()
+
+        cosine = F.cosine_similarity(
+            R1.unsqueeze(0) if R1.dim() == 1 else R1,
+            R2.unsqueeze(0) if R2.dim() == 1 else R2,
+            dim=-1,
+        ).clamp(-1.0, 1.0)
+
+        return torch.rad2deg(torch.acos(cosine))
+
+    def delta(
+        self,
+        D1: RelationalDomain,
+        D2: RelationalDomain,
+    ) -> DomainDifference:
+
+        R1 = D1.relational_vector()
+        R2 = D2.relational_vector()
+
+        # Dimension-independent L2 distance
+        raw        = torch.norm(R1 - R2, p=2)
+        delta_norm = raw / (R1.shape[-1] ** 0.5)
+
+        angle     = self.relational_angle(D1, D2)
+
+        # Handling potential batching in tensors
+        d_val = delta_norm.mean().item() if delta_norm.numel() > 1 else delta_norm.item()
+        a_val = angle.mean().item() if angle.numel() > 1 else angle.item()
+
+        lo = self.parallel_threshold - self.unverifiable_band
+        hi = self.parallel_threshold + self.unverifiable_band
+
+        if lo <= d_val <= hi:
+            regime = ParallelismRegime.UNVERIFIABLE
+        elif d_val < lo:
+            if a_val > self.angular_threshold:
+                regime = ParallelismRegime.NON_PARALLEL
+            else:
+                regime = ParallelismRegime.PARALLEL
+        else:
+            regime = ParallelismRegime.NON_PARALLEL
+
+        return DomainDifference(
+            D1=D1,
+            D2=D2,
+            angle=angle,
+            magnitude=delta_norm,
+            regime=regime,
+        )
 
 
 # ============================================================================
@@ -295,6 +459,14 @@ class TriadicSystem(nn.Module):
         indeterminacy = (self.formal_indet + self.informal_indet) / 2
         score = (determinacy - indeterminacy) * (1 + centrality)
         return "constitutive" if score > 0.5 else "cosmetic"
+
+    def get_domain(self, input_ids: torch.Tensor, attn_mask: Optional[torch.Tensor] = None) -> RelationalDomain:
+        """
+        Captures the domain [O, S] for this triadic manifold.
+        """
+        O_out = self.O(input_ids)
+        S_out = self.S(self.C(O_out, attn_mask))
+        return RelationalDomain(O=O_out, S=S_out, name=self.node_name)
 
     def forward(
         self,
@@ -482,6 +654,28 @@ class GNode(nn.Module):
     # ----------------------------------------------------------------------
     # Forward
     # ----------------------------------------------------------------------
+
+    def get_domain(
+        self,
+        left_ids:  torch.Tensor,
+        right_ids: torch.Tensor,
+    ) -> RelationalDomain:
+        """
+        Captures the domain [O, S] for this emergent field.
+        O is the raw ensemble of fields.
+        S is the fused result after cross-attention.
+        """
+        left_field  = self.left(left_ids)
+        right_field = self.right(right_ids)
+
+        O_ensemble = (left_field + right_field) / 2
+
+        left_prime, right_prime = self.cross_attention(left_field, right_field)
+        alpha = self.mix(torch.cat([left_prime, right_prime], dim=-1))
+        fused = alpha * left_prime + (1 - alpha) * right_prime
+        S_interpreted = self.field_norm(fused)
+
+        return RelationalDomain(O=O_ensemble, S=S_interpreted, name=self.node_name)
 
     def forward(
         self,

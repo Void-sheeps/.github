@@ -1,7 +1,10 @@
 import torch
 import matplotlib.pyplot as plt
 import networkx as nx
-from relational_interpreter import Node, ONode, CNode, SNode, TriadicSystem, GNode, DIM, VOCAB_SIZE
+from relational_interpreter import (
+    Node, ONode, CNode, SNode, TriadicSystem, GNode,
+    DIM, VOCAB_SIZE, RelationalGeometry, RelationalDomain
+)
 
 def run_analysis():
     torch.manual_seed(42)
@@ -104,6 +107,43 @@ def run_analysis():
     plt.title("Synthetic Relational Field (G) Topology: Manifold Interaction & Determinacy Roles")
     plt.savefig("relational_analysis.png")
     print("Analysis complete. Saved visualization to relational_analysis.png")
+
+    # 7. Relational Geometry Analysis
+    print("\nRelational Geometry Analysis:")
+    geo = RelationalGeometry(
+        parallel_threshold=0.05,
+        unverifiable_band=0.01,
+        angular_threshold=15.0
+    )
+
+    # Extract domains
+    D1 = T1.get_domain(ids1)
+    D2 = T2.get_domain(ids2)
+    DG = G_field.get_domain(ids1, ids2)
+
+    # Compare T1 vs T2
+    diff12 = geo.delta(D1, D2)
+    print(f"\nT1 vs T2:")
+    print(f"  ΔD magnitude (norm)   : {diff12.magnitude.mean().item():.6f}")
+    print(f"  relational angle      : {diff12.angle.mean().item():.4f}°")
+    print(f"  regime                : {diff12.regime.value}")
+
+    # Compare T1 vs G
+    diff1G = geo.delta(D1, DG)
+    print(f"\nT1 vs G:")
+    print(f"  ΔD magnitude (norm)   : {diff1G.magnitude.mean().item():.6f}")
+    print(f"  relational angle      : {diff1G.angle.mean().item():.4f}°")
+    print(f"  regime                : {diff1G.regime.value}")
+
+    # Perturbed analysis
+    ids1_p = ids1.clone()
+    ids1_p[0, 0] = (ids1_p[0, 0] + 1) % VOCAB_SIZE
+    D1_p = T1.get_domain(ids1_p)
+    diff_p = geo.delta(D1, D1_p)
+    print(f"\nT1 vs T1 (perturbed):")
+    print(f"  ΔD magnitude (norm)   : {diff_p.magnitude.mean().item():.6f}")
+    print(f"  relational angle      : {diff_p.angle.mean().item():.4f}°")
+    print(f"  regime                : {diff_p.regime.value}")
 
     print("\nDeterminacy Report:")
     print(f"{'Node Name':<25} | {'Role':<15} | {'Det':<6} | {'Indet':<6}")
