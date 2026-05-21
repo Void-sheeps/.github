@@ -3,7 +3,8 @@ import matplotlib.pyplot as plt
 import networkx as nx
 from relational_interpreter import (
     Node, ONode, CNode, SNode, TriadicSystem, GNode,
-    DIM, VOCAB_SIZE, RelationalGeometry, RelationalDomain
+    DIM, VOCAB_SIZE, RelationalGeometry, RelationalDomain,
+    StructuralGeometry, Field
 )
 
 def run_analysis():
@@ -144,6 +145,24 @@ def run_analysis():
     print(f"  ΔD magnitude (norm)   : {diff_p.magnitude.mean().item():.6f}")
     print(f"  relational angle      : {diff_p.angle.mean().item():.4f}°")
     print(f"  regime                : {diff_p.regime.value}")
+
+    # 8. Structural Field Analysis
+    print("\nStructural Field Analysis:")
+    struct_geo = StructuralGeometry()
+
+    F1 = T1.get_field(ids1)
+    F2 = T2.get_field(ids2)
+    FG = G_field.get_field(ids1, ids2)
+
+    relation_F12 = struct_geo.compare(F1, F2)
+    print(f"\nField T1 vs Field T2:")
+    print(f"  angle             : {relation_F12.angle:.4f}°")
+    print(f"  magnitude         : {relation_F12.magnitude:.6f}")
+    print(f"  relation regime   : {relation_F12.regime.name}")
+
+    print("\nSignatures (Field T1):")
+    for unit in F1.units():
+        print(f"  {unit.signature}")
 
     print("\nDeterminacy Report:")
     print(f"{'Node Name':<25} | {'Role':<15} | {'Det':<6} | {'Indet':<6}")

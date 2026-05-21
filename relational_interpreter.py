@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import math
+import struct
 from dataclasses import dataclass
-from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from enum import Enum, IntEnum
+from typing import Dict, List, Optional, Tuple, FrozenSet
 
 import torch
 import torch.nn as nn
@@ -158,6 +161,339 @@ class Node(nn.Module):
 
     def forward(self, *args, **kwargs) -> torch.Tensor:
         return self.op(*args, **kwargs)
+
+
+# ============================================================================
+# STRUCTURAL VALIDATION
+# ============================================================================
+
+class StructuralTypeError(TypeError):
+    pass
+
+
+class StructuralValidator:
+
+    @staticmethod
+    def validate_numeric(value: object) -> None:
+        if isinstance(value, str):
+            raise StructuralTypeError(
+                "String values are not supported in structural operations."
+            )
+
+    @staticmethod
+    def validate_tensor(tensor: torch.Tensor) -> None:
+        if not tensor.is_floating_point():
+            raise StructuralTypeError(
+                "Tensor must use a floating-point dtype."
+            )
+
+
+# ============================================================================
+# STRUCTURAL SIGNATURE
+# ============================================================================
+
+@dataclass(frozen=True)
+class StructuralSignature:
+    density_scale: float
+    irregularity: float
+    digest: str
+
+    @staticmethod
+    def derive(
+        density_scale: float,
+        irregularity: float,
+        vector: torch.Tensor,
+    ) -> StructuralSignature:
+
+        raw = struct.pack("ff", density_scale, irregularity)
+        raw += vector.detach().cpu().numpy().tobytes()
+
+        digest = hashlib.sha256(raw).hexdigest()[:16]
+
+        return StructuralSignature(
+            density_scale=density_scale,
+            irregularity=irregularity,
+            digest=digest,
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"StructuralSignature("
+            f"d={self.density_scale:.3f}, "
+            f"i={self.irregularity:.3f}, "
+            f"#{self.digest})"
+        )
+
+
+# ============================================================================
+# UNIT
+# ============================================================================
+
+class Unit:
+
+    def __init__(
+        self,
+        density_scale: float,
+        irregularity: float,
+        dimension: int,
+        *,
+        vector: torch.Tensor | None = None,
+    ) -> None:
+
+        StructuralValidator.validate_numeric(density_scale)
+        StructuralValidator.validate_numeric(irregularity)
+
+        if vector is None:
+            base = torch.randn(dimension)
+            noise = irregularity * torch.randn(dimension)
+            vector = density_scale * (base + noise)
+
+        self._vector = vector.float()
+
+        StructuralValidator.validate_tensor(self._vector)
+
+        self.signature = StructuralSignature.derive(
+            density_scale=density_scale,
+            irregularity=irregularity,
+            vector=self._vector,
+        )
+
+    # ------------------------------------------------------------------
+
+    def vector(self) -> torch.Tensor:
+        return self._vector.clone()
+
+    def density(self) -> float:
+        return self._vector.norm().item()
+
+    def __hash__(self) -> int:
+        return hash(self.signature.digest)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Unit):
+            return NotImplemented
+
+        return self.signature.digest == other.signature.digest
+
+    def __repr__(self) -> str:
+        return (
+            f"Unit("
+            f"signature={self.signature}, "
+            f"density={self.density():.6f})"
+        )
+
+
+# ============================================================================
+# FIELD
+# ============================================================================
+
+class Field:
+
+    def __init__(self) -> None:
+        self._units: list[Unit] = []
+
+    # ------------------------------------------------------------------
+
+    def insert(self, unit: Unit) -> None:
+        self._units.append(unit)
+
+    def units(self) -> Tuple[Unit, ...]:
+        return tuple(self._units)
+
+    def centroid(self) -> torch.Tensor:
+        if not self._units:
+            raise ValueError("Field is empty.")
+
+        return torch.stack(
+            [unit.vector() for unit in self._units]
+        ).mean(dim=0)
+
+    def density(self) -> float:
+        if not self._units:
+            return 0.0
+
+        return sum(
+            unit.density() for unit in self._units
+        ) / len(self._units)
+
+    def signatures(self) -> FrozenSet[str]:
+        return frozenset(
+            unit.signature.digest
+            for unit in self._units
+        )
+
+    def __len__(self) -> int:
+        return len(self._units)
+
+    def __repr__(self) -> str:
+        return (
+            f"Field("
+            f"size={len(self._units)}, "
+            f"density={self.density():.6f})"
+        )
+
+
+# ============================================================================
+# RELATION REGIME
+# ============================================================================
+
+class RelationRegime(IntEnum):
+    ALIGNED = 0
+    OFFSET = 1
+    DIVERGENT = 2
+    ASYMMETRIC = 3
+
+
+# ============================================================================
+# ORIENTATION
+# ============================================================================
+
+@dataclass(frozen=True)
+class Orientation:
+    leading_index: int
+    asymmetry: float
+
+
+# ============================================================================
+# RELATION
+# ============================================================================
+
+@dataclass(frozen=True)
+class Relation:
+    angle: float
+    cosine: float
+    magnitude: float
+
+    density_left: float
+    density_right: float
+    density_ratio: float
+
+    orientation: Orientation
+    regime: RelationRegime
+
+    left_signatures: FrozenSet[str]
+    right_signatures: FrozenSet[str]
+
+
+# ============================================================================
+# STRUCTURAL GEOMETRY
+# ============================================================================
+
+class StructuralGeometry:
+
+    def __init__(
+        self,
+        alignment_threshold: float = 0.90,
+        divergence_angle: float = 20.0,
+        asymmetry_threshold: float = 2.0,
+    ) -> None:
+
+        self._alignment_threshold = alignment_threshold
+        self._divergence_angle = divergence_angle
+        self._asymmetry_threshold = asymmetry_threshold
+
+    # ------------------------------------------------------------------
+
+    def compare(
+        self,
+        left: Field,
+        right: Field,
+    ) -> Relation:
+
+        left_centroid = left.centroid()
+        right_centroid = right.centroid()
+
+        # ------------------------------------------------------------------
+        # Angular relation
+        # ------------------------------------------------------------------
+
+        cosine = F.cosine_similarity(
+            left_centroid.unsqueeze(0),
+            right_centroid.unsqueeze(0),
+        ).item()
+
+        cosine = max(-1.0, min(1.0, cosine))
+
+        angle = math.degrees(math.acos(cosine))
+
+        # ------------------------------------------------------------------
+        # Magnitude
+        # ------------------------------------------------------------------
+
+        magnitude = (
+            left_centroid - right_centroid
+        ).norm().item()
+
+        # ------------------------------------------------------------------
+        # Density
+        # ------------------------------------------------------------------
+
+        density_left = left.density()
+        density_right = right.density()
+
+        density_ratio = (
+            density_left / density_right
+            if density_right != 0.0
+            else float("inf")
+        )
+
+        asymmetric = (
+            density_ratio > self._asymmetry_threshold
+            or density_ratio < 1.0 / self._asymmetry_threshold
+        )
+
+        # ------------------------------------------------------------------
+        # Orientation
+        # ------------------------------------------------------------------
+
+        left_norm = left_centroid.norm().item()
+        right_norm = right_centroid.norm().item()
+
+        tolerance = 1e-6
+
+        if abs(left_norm - right_norm) < tolerance:
+            leading_index = -1
+        else:
+            leading_index = (
+                0 if left_norm > right_norm else 1
+            )
+
+        orientation = Orientation(
+            leading_index=leading_index,
+            asymmetry=abs(left_norm - right_norm),
+        )
+
+        # ------------------------------------------------------------------
+        # Regime
+        # ------------------------------------------------------------------
+
+        if cosine >= self._alignment_threshold and asymmetric:
+            regime = RelationRegime.ASYMMETRIC
+
+        elif cosine >= self._alignment_threshold:
+            regime = RelationRegime.ALIGNED
+
+        elif angle > self._divergence_angle:
+            regime = RelationRegime.DIVERGENT
+
+        else:
+            regime = RelationRegime.OFFSET
+
+        return Relation(
+            angle=angle,
+            cosine=cosine,
+            magnitude=magnitude,
+
+            density_left=density_left,
+            density_right=density_right,
+            density_ratio=density_ratio,
+
+            orientation=orientation,
+            regime=regime,
+
+            left_signatures=left.signatures(),
+            right_signatures=right.signatures(),
+        )
 
 
 # ============================================================================
@@ -468,6 +804,22 @@ class TriadicSystem(nn.Module):
         S_out = self.S(self.C(O_out, attn_mask))
         return RelationalDomain(O=O_out, S=S_out, name=self.node_name)
 
+    def get_field(self, input_ids: torch.Tensor, attn_mask: Optional[torch.Tensor] = None) -> Field:
+        """
+        Extracts internal states as a structural Field.
+        """
+        O_out = self.O(input_ids)
+        C_out = self.C(O_out, attn_mask)
+        S_out = self.S(C_out)
+
+        field = Field()
+        # Flatten batch/time for unit insertion
+        for out, scale, irr in [(O_out, 1.0, 0.1), (C_out, 1.1, 0.2), (S_out, 1.2, 0.3)]:
+            vec = out.mean(dim=(0, 1))
+            field.insert(Unit(density_scale=scale, irregularity=irr, dimension=vec.shape[-1], vector=vec))
+
+        return field
+
     def forward(
         self,
         input_ids: torch.Tensor,
@@ -676,6 +1028,22 @@ class GNode(nn.Module):
         S_interpreted = self.field_norm(fused)
 
         return RelationalDomain(O=O_ensemble, S=S_interpreted, name=self.node_name)
+
+    def get_field(self, left_ids: torch.Tensor, right_ids: torch.Tensor) -> Field:
+        """
+        Extracts emergent states as a structural Field.
+        """
+        left_field  = self.left(left_ids)
+        right_field = self.right(right_ids)
+        left_prime, right_prime = self.cross_attention(left_field, right_field)
+
+        field = Field()
+        for out, scale, irr in [(left_field, 1.0, 0.1), (right_field, 1.0, 0.1),
+                               (left_prime, 1.1, 0.2), (right_prime, 1.1, 0.2)]:
+            vec = out.mean(dim=(0, 1))
+            field.insert(Unit(density_scale=scale, irregularity=irr, dimension=vec.shape[-1], vector=vec))
+
+        return field
 
     def forward(
         self,
