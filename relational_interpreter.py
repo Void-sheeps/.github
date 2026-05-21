@@ -1,42 +1,85 @@
 from __future__ import annotations
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+
+from typing import Dict, List, Optional, Tuple
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+# ============================================================================
+# HYPERPARAMETERS
+# ============================================================================
+
+DIM        = 128
+VOCAB_SIZE = 8_192
+NUM_HEADS  = 4
+
+
+# ============================================================================
+# RELATIONAL NODE
+# ============================================================================
+
 import networkx as nx
 
+class Node(nn.Module):
+    """
+    Relational-computational node.
 
-@dataclass
-class Node:
-    name: str
-    description: str = ""
-    children: List["Node"] = field(default_factory=list)
-    relations: Dict[str, List["Node"]] = field(default_factory=dict)
-    # Quadripartitioned determinacy profile
-    formal_det: float = 0.0
-    informal_det: float = 0.0
-    formal_indet: float = 0.0
-    informal_indet: float = 0.0
+    Each node is simultaneously:
 
-    def add_child(self, node: "Node") -> "Node":
+        - symbolic       (named, described)
+        - topological    (children, relations)
+        - differentiable (op: nn.Module)
+        - operational    (forward pass)
+    """
+
+    def __init__(
+        self,
+        name:        str,
+        description: str                 = "",
+        op:          Optional[nn.Module] = None,
+        formal_det:  float               = 0.0,
+        informal_det: float               = 0.0,
+        formal_indet: float               = 0.0,
+        informal_indet: float             = 0.0,
+    ):
+        super().__init__()
+        self.node_name   = name
+        self.description = description
+        self.children:  List[Node]            = []
+        self.relations: Dict[str, List[Node]] = {}
+        self.op = op if op is not None else nn.Identity()
+
+        # Quadripartitioned determinacy profile
+        self.formal_det = formal_det
+        self.informal_det = informal_det
+        self.formal_indet = formal_indet
+        self.informal_indet = informal_indet
+
+    def add_child(self, node: Node) -> Node:
         self.children.append(node)
+        self.add_module(f"{self.node_name}_{node.node_name}", node)
         return self
 
-    def relate(self, relation: str, node: "Node") -> "Node":
+    def relate(self, relation: str, node: Node) -> Node:
         self.relations.setdefault(relation, []).append(node)
         return self
 
-    def traverse(self, depth: int = 0, seen: set = None) -> None:
+    def traverse(self, depth: int = 0, seen: Optional[set] = None) -> None:
         if seen is None:
             seen = set()
         if id(self) in seen:
             return
         seen.add(id(self))
         indent = "  " * depth
-        print(f"{indent}[{self.name}]" + (f": {self.description}" if self.description else ""))
+        desc   = f": {self.description}" if self.description else ""
+        print(f"{indent}[{self.node_name}]{desc}")
         for child in self.children:
             child.traverse(depth + 1, seen)
         for rel, nodes in self.relations.items():
             for node in nodes:
-                print(f"{indent}  --{rel}--> [{node.name}]")
+                print(f"{indent}  --{rel}--> [{node.node_name}]")
 
     def to_graph(self, G: Optional[nx.DiGraph] = None, seen: set = None) -> nx.DiGraph:
         if G is None:
@@ -47,18 +90,22 @@ class Node:
             return G
         seen.add(id(self))
 
-        G.add_node(self.name, description=self.description,
+        G.add_node(self.node_name, description=self.description,
                    formal_det=self.formal_det, informal_det=self.informal_det,
                    formal_indet=self.formal_indet, informal_indet=self.informal_indet)
 
         for child in self.children:
-            G.add_edge(self.name, child.name, relation="child")
+            G.add_edge(self.node_name, child.node_name, relation="child")
             child.to_graph(G, seen)
 
         for rel, nodes in self.relations.items():
             for node in nodes:
-                G.add_edge(self.name, node.name, relation=rel)
-                node.to_graph(G, seen)
+                # Some relational targets might not be Nodes (e.g. they might be GNode or TriadicSystem)
+                # Ensure they have node_name and to_graph
+                target_name = getattr(node, "node_name", str(node))
+                G.add_edge(self.node_name, target_name, relation=rel)
+                if hasattr(node, "to_graph"):
+                    node.to_graph(G, seen)
 
         return G
 
@@ -69,7 +116,7 @@ class Node:
         Cosmetic: High formal/informal indeterminacy or low centrality.
         """
         try:
-            centrality = nx.degree_centrality(G)[self.name]
+            centrality = nx.degree_centrality(G)[self.node_name]
         except KeyError:
             centrality = 0.0
 
@@ -81,42 +128,546 @@ class Node:
 
         return "constitutive" if score > 0.5 else "cosmetic"
 
-
-def couple(o: Node, s: Node, c: Node) -> Node:
-    g = Node(name="G", description="Derived relational output within synthetic field")
-    for constraint in c.children:
-        o.relate("constrained_by", constraint)
-        s.relate("modulated_by", constraint)
-    for lens in s.children:
-        o.relate("projected_through", lens)
-    for component in o.children + s.children + c.children:
-        g.relate("induced_from", component)
-    g.relate("via_coupling_of", o)
-    g.relate("via_coupling_of", s)
-    g.relate("via_coupling_of", c)
-    return g
+    def forward(self, *args, **kwargs) -> torch.Tensor:
+        return self.op(*args, **kwargs)
 
 
-O = Node(name="O", description="Computational substrate")
-O.add_child(Node("embeddings"))
-O.add_child(Node("token_configurations"))
-O.add_child(Node("state_invariants"))
-O.add_child(Node("consistency_regions"))
+# ============================================================================
+# O — COMPUTATIONAL SUBSTRATE
+# ============================================================================
 
-S = Node(name="S", description="Interpretation regime")
-S.add_child(Node("lexical_lens"))
-S.add_child(Node("geometric_lens"))
-S.add_child(Node("probabilistic_lens"))
-S.add_child(Node("interpretive_mapping"))
+class ONode(Node):
+    """O := input_ids [B, T]  →  substrate [B, T, D]"""
 
-C = Node(name="C", description="Coupling constraints")
-C.add_child(Node("alignment_constraints"))
-C.add_child(Node("span_relations"))
-C.add_child(Node("threshold_interfaces"))
-C.add_child(Node("cross_domain_bindings"))
+    def __init__(self, dim: int = DIM, **kwargs):
+        super().__init__("O", "Computational substrate", **kwargs)
+        self.add_child(Node("embeddings",        op=nn.Embedding(VOCAB_SIZE, dim)))
+        self.add_child(Node("state_projection",  op=nn.Linear(dim, dim)))
+        self.add_child(Node("local_coherence",   op=nn.Conv1d(dim, dim, 3, padding=1)))
+        self.add_child(Node("normalization",     op=nn.LayerNorm(dim)))
 
+    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+        x = self.children[0](input_ids)
+        x = self.children[1](x)
+        x = self.children[2](x.transpose(1, 2)).transpose(1, 2)
+        x = self.children[3](x)
+        return x
+
+
+# ============================================================================
+# C — COUPLING FIELD
+# ============================================================================
+
+class CNode(Node):
+    """C := substrate [B, T, D]  →  constrained [B, T, D]"""
+
+    def __init__(self, dim: int = DIM, **kwargs):
+        super().__init__("C", "Coupling constraints", **kwargs)
+        self.add_child(Node("alignment",     op=nn.MultiheadAttention(dim, NUM_HEADS, batch_first=True)))
+        self.add_child(Node("span",          op=nn.Linear(dim, dim)))
+        self.add_child(Node("threshold",     op=nn.Sequential(nn.Linear(dim, dim), nn.Sigmoid())))
+        self.add_child(Node("cross_binding", op=nn.Bilinear(dim, dim, dim)))
+
+    def forward(self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        aligned, _ = self.children[0](x, x, x, attn_mask=attn_mask)
+        spans      = self.children[1](aligned)
+        gate       = self.children[2](spans)
+        gated      = gate * aligned
+        B, T, D    = gated.shape
+        cross      = self.children[3](gated.reshape(B*T, D), x.reshape(B*T, D)).reshape(B, T, D)
+        return cross
+
+
+# ============================================================================
+# S — INTERPRETATION REGIME
+# ============================================================================
+
+class SNode(Node):
+    """S := constrained [B, T, D]  →  interpreted [B, T, D]"""
+
+    def __init__(self, dim: int = DIM, **kwargs):
+        super().__init__("S", "Interpretation regime", **kwargs)
+        self.add_child(Node("lexical_lens",      op=nn.Linear(dim, dim)))
+        self.add_child(Node("geometric_lens",    op=nn.Linear(dim, dim)))
+        self.add_child(Node("probabilistic_lens",op=nn.Sequential(nn.Linear(dim, dim), nn.Sigmoid())))
+        self.add_child(Node("fusion_mapping",    op=nn.Linear(3 * dim, dim)))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        fused = torch.cat([self.children[0](x), self.children[1](x), self.children[2](x)], dim=-1)
+        return self.children[3](fused)
+
+
+# ============================================================================
+# TRIADIC SYSTEM
+# ============================================================================
+
+class TriadicSystem(nn.Module):
+    """
+            [O|
+            |C|
+            |S]
+
+    Atomic triadic unit: O → C → S.
+
+    Implements the same interface as GNode (forward, traverse, node_name)
+    so that G can itself be used as a pole in a higher-order coupling.
+    """
+
+    def __init__(self, O: ONode, C: CNode, S: SNode, name: str = "T",
+                 formal_det: float = 0.0, informal_det: float = 0.0,
+                 formal_indet: float = 0.0, informal_indet: float = 0.0):
+        super().__init__()
+        self.O = O
+        self.C = C
+        self.S = S
+        self.node_name = name
+
+        # Ensure unique names for components within this manifold
+        self.O.node_name = f"{name}_{self.O.node_name}"
+        self.C.node_name = f"{name}_{self.C.node_name}"
+        self.S.node_name = f"{name}_{self.S.node_name}"
+        for comp in [self.O, self.C, self.S]:
+            for child in comp.children:
+                child.node_name = f"{comp.node_name}_{child.node_name}"
+
+        self.description = "Atomic triadic unit"
+        self.relations: Dict[str, List[Node]] = {}
+
+        self.formal_det = formal_det
+        self.informal_det = informal_det
+        self.formal_indet = formal_indet
+        self.informal_indet = informal_indet
+
+        self._wire()
+
+    def _wire(self) -> None:
+        for c in self.C.children:
+            self.O.relate("constrained_by",    c)
+            self.S.relate("modulated_by",      c)
+        for s in self.S.children:
+            self.O.relate("projected_through", s)
+        for o in self.O.children:
+            self.C.relate("grounded_in",       o)
+        for s in self.S.children:
+            self.C.relate("interpreted_through", s)
+
+    def traverse(self, depth: int = 0, seen: Optional[set] = None) -> None:
+        if seen is None:
+            seen = set()
+        if id(self) in seen:
+            return
+        seen.add(id(self))
+        indent = "  " * depth
+        print(f"{indent}[{self.node_name}]")
+        self.O.traverse(depth + 1, seen)
+        self.C.traverse(depth + 1, seen)
+        self.S.traverse(depth + 1, seen)
+
+    def to_graph(self, G: Optional[nx.DiGraph] = None, seen: set = None) -> nx.DiGraph:
+        if G is None:
+            G = nx.DiGraph()
+        if seen is None:
+            seen = set()
+        if id(self) in seen:
+            return G
+        seen.add(id(self))
+
+        G.add_node(self.node_name, description=self.description,
+                   formal_det=self.formal_det, informal_det=self.informal_det,
+                   formal_indet=self.formal_indet, informal_indet=self.informal_indet)
+
+        G.add_edge(self.node_name, self.O.node_name, relation="substrate")
+        G.add_edge(self.node_name, self.C.node_name, relation="coupling")
+        G.add_edge(self.node_name, self.S.node_name, relation="regime")
+
+        self.O.to_graph(G, seen)
+        self.C.to_graph(G, seen)
+        self.S.to_graph(G, seen)
+
+        return G
+
+    def get_role(self, G: nx.DiGraph) -> str:
+        try:
+            centrality = nx.degree_centrality(G)[self.node_name]
+        except KeyError:
+            centrality = 0.0
+        determinacy = (self.formal_det + self.informal_det) / 2
+        indeterminacy = (self.formal_indet + self.informal_indet) / 2
+        score = (determinacy - indeterminacy) * (1 + centrality)
+        return "constitutive" if score > 0.5 else "cosmetic"
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        return self.S(self.C(self.O(input_ids), attn_mask))
+
+
+# ============================================================================
+# CROSS-FIELD ATTENTION
+# ============================================================================
+
+class CrossFieldAttention(nn.Module):
+    """
+    Attends from one field into another without merging them.
+
+    Each field queries the other; neither is projected into the other's
+    internal topology.  The interaction produces a residual correction
+    rather than a replacement.
+
+        field_a  ──query──►  field_b  ──►  delta_a
+        field_b  ──query──►  field_a  ──►  delta_b
+
+    The correction is gated so the coupling strength is learned, not fixed.
+    """
+
+    def __init__(self, dim: int = DIM, num_heads: int = NUM_HEADS):
+        super().__init__()
+        self.attend_a_to_b = nn.MultiheadAttention(dim, num_heads, batch_first=True)
+        self.attend_b_to_a = nn.MultiheadAttention(dim, num_heads, batch_first=True)
+        self.gate_a        = nn.Sequential(nn.Linear(dim, dim), nn.Sigmoid())
+        self.gate_b        = nn.Sequential(nn.Linear(dim, dim), nn.Sigmoid())
+        self.norm_a        = nn.LayerNorm(dim)
+        self.norm_b        = nn.LayerNorm(dim)
+
+    def forward(
+        self,
+        a: torch.Tensor,
+        b: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        a, b : [B, T, D]
+        returns: a', b'  —  each field corrected by the other, residually
+        """
+        delta_a, _ = self.attend_a_to_b(a, b, b)   # a queries b
+        delta_b, _ = self.attend_b_to_a(b, a, a)   # b queries a
+
+        a_prime = self.norm_a(a + self.gate_a(delta_a) * delta_a)
+        b_prime = self.norm_b(b + self.gate_b(delta_b) * delta_b)
+
+        return a_prime, b_prime
+
+
+# ============================================================================
+# G — SYNTHETIC RELATIONAL FIELD
+# ============================================================================
+
+class GNode(nn.Module):
+    """
+     [O|     [O|
+     |C|  X  |C|   =   [G]
+     |S]     |S]
+
+    G is the emergent field generated by the interaction of two triadic
+    manifolds.
+
+    Coupling mechanism:
+        1. Each system computes its own field independently.
+        2. CrossFieldAttention lets each field query the other,
+           producing residual corrections rather than a merger.
+        3. The two corrected fields are fused via a learned convex
+           combination (not concatenation), preserving their structural
+           distinctness in the output.
+
+    G implements the same interface as TriadicSystem so it can serve as
+    a pole in a higher-order GNode.
+    """
+
+    def __init__(
+        self,
+        left:  nn.Module,
+        right: nn.Module,
+        dim:   int = DIM,
+        name:  str = "G",
+        formal_det: float = 0.0, informal_det: float = 0.0,
+        formal_indet: float = 0.0, informal_indet: float = 0.0
+    ):
+        super().__init__()
+
+        self.left  = left
+        self.right = right
+
+        self.node_name = name
+        self.description = "Emergent relational field"
+        self.relations: Dict[str, List] = {}
+
+        self.formal_det = formal_det
+        self.informal_det = informal_det
+        self.formal_indet = formal_indet
+        self.informal_indet = informal_indet
+
+        # cross-field interaction: fields query each other, residually
+        self.cross_attention = CrossFieldAttention(dim)
+
+        # learned convex combination weight (per position, per feature)
+        self.mix = nn.Sequential(
+            nn.Linear(dim * 2, dim),
+            nn.Sigmoid(),
+        )
+
+        self.field_norm = nn.LayerNorm(dim)
+
+        self._wire()
+
+    # ----------------------------------------------------------------------
+    # Relational topology
+    # ----------------------------------------------------------------------
+
+    def _wire(self) -> None:
+        self.relations.setdefault("left_pole",  []).append(self.left)
+        self.relations.setdefault("right_pole", []).append(self.right)
+        self.relations.setdefault("coupled_via", []).append(
+            Node("cross_field_attention")
+        )
+
+    def relate(self, relation: str, node: Node) -> GNode:
+        self.relations.setdefault(relation, []).append(node)
+        return self
+
+    # ----------------------------------------------------------------------
+    # Traversal
+    # ----------------------------------------------------------------------
+
+    def traverse(self, depth: int = 0, seen: Optional[set] = None) -> None:
+        if seen is None:
+            seen = set()
+        if id(self) in seen:
+            return
+        seen.add(id(self))
+        indent = "  " * depth
+        print(f"{indent}[{self.node_name}]: emergent relational field")
+        if hasattr(self.left, "traverse"):
+            self.left.traverse(depth + 1, seen)
+        if hasattr(self.right, "traverse"):
+            self.right.traverse(depth + 1, seen)
+        for rel, nodes in self.relations.items():
+            for n in nodes:
+                name = getattr(n, "node_name", str(n))
+                print(f"{indent}  --{rel}--> [{name}]")
+
+    def to_graph(self, G: Optional[nx.DiGraph] = None, seen: set = None) -> nx.DiGraph:
+        if G is None:
+            G = nx.DiGraph()
+        if seen is None:
+            seen = set()
+        if id(self) in seen:
+            return G
+        seen.add(id(self))
+
+        G.add_node(self.node_name, description=self.description,
+                   formal_det=self.formal_det, informal_det=self.informal_det,
+                   formal_indet=self.formal_indet, informal_indet=self.informal_indet)
+
+        G.add_edge(self.node_name, self.left.node_name, relation="left_pole")
+        G.add_edge(self.node_name, self.right.node_name, relation="right_pole")
+
+        if hasattr(self.left, "to_graph"):
+            self.left.to_graph(G, seen)
+        if hasattr(self.right, "to_graph"):
+            self.right.to_graph(G, seen)
+
+        return G
+
+    def get_role(self, G: nx.DiGraph) -> str:
+        try:
+            centrality = nx.degree_centrality(G)[self.node_name]
+        except KeyError:
+            centrality = 0.0
+        determinacy = (self.formal_det + self.informal_det) / 2
+        indeterminacy = (self.formal_indet + self.informal_indet) / 2
+        score = (determinacy - indeterminacy) * (1 + centrality)
+        return "constitutive" if score > 0.5 else "cosmetic"
+
+    # ----------------------------------------------------------------------
+    # Forward
+    # ----------------------------------------------------------------------
+
+    def forward(
+        self,
+        left_ids:  torch.Tensor,
+        right_ids: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        left_ids, right_ids : [B, T]
+        returns              : [B, T, D]
+        """
+        left_field  = self.left(left_ids)           # [B, T, D]
+        right_field = self.right(right_ids)          # [B, T, D]
+
+        # fields interact without merging: each corrected by the other
+        left_prime, right_prime = self.cross_attention(left_field, right_field)
+
+        # learned convex combination
+        alpha = self.mix(torch.cat([left_prime, right_prime], dim=-1))  # [B, T, D] ∈ (0,1)
+        fused = alpha * left_prime + (1 - alpha) * right_prime          # [B, T, D]
+
+        return self.field_norm(fused)
+
+
+# ============================================================================
+# FIELD STACK
+# ============================================================================
+
+class FieldStack(nn.Module):
+    """
+    Composes a sequence of GNodes into a vertical stack.
+
+    G_0 = couple(T_a, T_b)
+    G_1 = couple(G_0, T_c)
+    G_2 = couple(G_1, T_d)
+    ...
+
+    Each level couples the accumulated field with a fresh triadic system,
+    deepening the relational structure without recursing into the previous
+    level's internal topology.
+
+    At inference:
+        - All left_ids are fed to the current accumulated field.
+        - Each right_ids is consumed by the corresponding fresh pole.
+
+    Shape contract: [B, T] × [B, T] → [B, T, D] at every level.
+    """
+
+    def __init__(self, depth: int = 3, dim: int = DIM):
+        super().__init__()
+
+        if depth < 1:
+            raise ValueError("depth must be ≥ 1")
+
+        # level 0: both poles are fresh triadic systems
+        self.levels: nn.ModuleList = nn.ModuleList()
+        g = GNode(
+            build_triadic_system("T_a"),
+            build_triadic_system("T_b"),
+            dim=dim,
+            name="G_0",
+        )
+        self.levels.append(g)
+
+        # levels 1…depth-1: left pole is the previous G, right is fresh
+        for i in range(1, depth):
+            g = GNode(
+                left  = self.levels[-1],
+                right = build_triadic_system(f"T_{chr(ord('c') + i - 1)}"),
+                dim   = dim,
+                name  = f"G_{i}",
+            )
+            self.levels.append(g)
+
+    def traverse(self) -> None:
+        print(f"\n[FieldStack] depth={len(self.levels)}")
+        # only traverse the outermost G; it recursively covers the rest
+        self.levels[-1].traverse(depth=1)
+
+    def forward(
+        self,
+        id_sequences: List[torch.Tensor],   # one [B, T] per stack level + 1
+    ) -> torch.Tensor:
+        """
+        id_sequences : list of length (depth + 1)
+            id_sequences[0]        → left pole of G_0
+            id_sequences[1]        → right pole of G_0 / left of G_1
+            id_sequences[k]        → right pole of G_{k-1}
+            id_sequences[-1]       → right pole of G_{depth-1}
+
+        This ensures every triadic system receives its own input, so no
+        field absorbs another's token sequence into its own embedding space.
+        """
+        if len(id_sequences) != len(self.levels) + 1:
+            raise ValueError(
+                f"FieldStack of depth {len(self.levels)} requires "
+                f"{len(self.levels) + 1} id_sequences; got {len(id_sequences)}"
+            )
+
+        # level 0 consumes the first two sequences
+        accumulated = self.levels[0](id_sequences[0], id_sequences[1])
+
+        # each subsequent level couples accumulated field with next sequence
+        for i, g in enumerate(self.levels[1:], start=1):
+            # g.left IS self.levels[i-1], so we pass accumulated as left_ids
+            # but g.left is a GNode that expects two id tensors...
+            # solution: wrap the accumulated tensor in a PassthroughTriad
+            accumulated = _couple_with_field(g, accumulated, id_sequences[i + 1])
+
+        return accumulated
+
+
+def _couple_with_field(
+    g:           GNode,
+    left_tensor: torch.Tensor,
+    right_ids:   torch.Tensor,
+) -> torch.Tensor:
+    """
+    When g.left is itself a GNode already evaluated, bypass its forward
+    and inject the precomputed left_tensor directly into the coupling.
+
+    This avoids re-running previous levels on potentially different inputs.
+    """
+    right_field = g.right(right_ids)
+
+    left_prime, right_prime = g.cross_attention(left_tensor, right_field)
+
+    alpha = g.mix(torch.cat([left_prime, right_prime], dim=-1))
+    fused = alpha * left_prime + (1 - alpha) * right_prime
+
+    return g.field_norm(fused)
+
+
+# ============================================================================
+# FACTORY
+# ============================================================================
+
+def build_triadic_system(name: str = "T", dim: int = DIM) -> TriadicSystem:
+    return TriadicSystem(ONode(dim), CNode(dim), SNode(dim), name=name)
+
+
+# ============================================================================
+# ENTRYPOINT
+# ============================================================================
 
 if __name__ == "__main__":
-    G = couple(O, S, C)
-    print("\nSYNTHETIC RELATIONAL DOMAIN\n")
+
+    torch.manual_seed(0)
+
+    B, T = 2, 16
+
+    def rand_ids() -> torch.Tensor:
+        return torch.randint(0, VOCAB_SIZE, (B, T))
+
+    # ── single-level G ───────────────────────────────────────────────────────
+
+    T1 = build_triadic_system("T1")
+    T2 = build_triadic_system("T2")
+    G  = GNode(T1, T2)
+
+    print("\n── SINGLE-LEVEL G ──")
     G.traverse()
+
+    out = G(rand_ids(), rand_ids())
+    print(f"\nG output: {tuple(out.shape)}")
+
+    params_G = sum(p.numel() for p in G.parameters())
+    print(f"G params: {params_G:,}")
+
+    # ── field stack: G_0 = T×T, G_1 = G_0×T, G_2 = G_1×T ──────────────────
+
+    stack = FieldStack(depth=3)
+
+    print("\n\n── FIELD STACK (depth=3) ──")
+    stack.traverse()
+
+    # stack of depth 3 consumes 4 id sequences
+    sequences = [rand_ids() for _ in range(4)]
+    out_stack = stack(sequences)
+    print(f"\nstack output: {tuple(out_stack.shape)}")
+
+    params_stack = sum(p.numel() for p in stack.parameters())
+    print(f"stack params: {params_stack:,}")
+
+    # ── parameter breakdown ──────────────────────────────────────────────────
+
+    print("\n── PARAMETER BREAKDOWN ──\n")
+    for name, mod in [("G (single)", G), ("FieldStack (depth=3)", stack)]:
+        total = sum(p.numel() for p in mod.parameters())
+        print(f"  {name:<28} {total:>12,}")
