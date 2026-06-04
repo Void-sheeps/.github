@@ -272,6 +272,8 @@ function getCompilationMessages() {
     'python3 merge_module_analysis.py',
     'python3 antinomy_resolver.py --simulate',
     'python3 antinomy_analysis.py',
+    'python3 agrippan_functor.py --simulate',
+    'python3 agrippan_analysis.py',
     'python3 empire_silicium_framework.py --simulate',
     'python3 empire_silicium_analysis.py',
     'python3 semantic_engine.py --simulate',
