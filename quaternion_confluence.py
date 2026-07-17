@@ -42,8 +42,11 @@ def make_shortlex(letter_order: list) -> Callable[[tuple, tuple], int]:
     return cmp
 
 
-@dataclass
+@dataclass(eq=False)
 class Rule:
+    """origin is provenance metadata, not part of a rule's identity:
+    two rules with the same (lhs, rhs) are the same rule regardless of
+    which critical pair produced them."""
     lhs: tuple
     rhs: tuple
     origin: str
@@ -55,6 +58,14 @@ class Rule:
 
     def __str__(self) -> str:
         return self.__repr__()
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Rule):
+            return NotImplemented
+        return (self.lhs, self.rhs) == (other.lhs, other.rhs)
+
+    def __hash__(self) -> int:
+        return hash((self.lhs, self.rhs))
 
 
 def rewrite_step(w: tuple, rules: List[Rule]) -> Tuple[Optional[tuple], Optional[Rule]]:
@@ -88,17 +99,20 @@ def normal_form(w: tuple, rules: List[Rule], max_steps: int = 2000) -> Tuple[tup
 # ---------------------------------------------------------------------------
 
 def overlaps(l1: tuple, l2: tuple):
-    """Yield all suffix-prefix and inclusion overlaps of l1 with l2."""
+    """Yield all suffix-prefix and inclusion overlaps of l1 with l2.
+    Each yield is (ambient_word, pos1, pos2) where l1 matches ambient at pos1
+    and l2 matches ambient at pos2."""
     n1, n2 = len(l1), len(l2)
-    # Suffix-prefix overlaps
-    for i in range(1, n1):
-        k = n1 - i
-        if k <= n2 and l1[i:] == l2[:k]:
-            yield l1 + l2[k:], 0, i
-    # Inclusions
-    for i in range(0, n1 - n2 + 1):
-        if n2 > 0 and l1[i:i + n2] == l2:
-            yield l1, 0, i
+    # Suffix-prefix overlaps: a proper suffix of l1 equals a proper prefix of l2
+    for k in range(1, min(n1, n2)):
+        if l1[n1 - k:] == l2[:k]:
+            amb = l1 + l2[k:]
+            yield amb, 0, n1 - k
+    # Inclusions: l2 occurs as a substring inside l1
+    if n2 > 0:
+        for i in range(0, n1 - n2 + 1):
+            if l1[i:i + n2] == l2:
+                yield l1, 0, i
 
 
 def critical_pairs(rules: List[Rule]) -> List[Tuple[tuple, tuple, str]]:
@@ -122,8 +136,68 @@ class CompletionFailure(Exception):
     pass
 
 
-def knuth_bendix(rules: List[Rule], cmp: Callable[[tuple, tuple], int], max_iters: int = 200, verbose: bool = True) -> List[Rule]:
-    """Execute the Knuth-Bendix completion algorithm to find a confluent rule-set."""
+class ConfluenceCertificationError(Exception):
+    """Raised if the post-completion system fails self-verification —
+    i.e. the completion loop's own bookkeeping disagrees with a direct
+    recomputation of joinability on the final rule set."""
+    pass
+
+
+def _lhs_reducible_by_others(rule: Rule, others: List[Rule]) -> bool:
+    n = len(rule.lhs)
+    for other in others:
+        m = len(other.lhs)
+        if m == 0 or m > n or (m == n and other.lhs == rule.lhs):
+            continue
+        for k in range(n - m + 1):
+            if rule.lhs[k:k + m] == other.lhs:
+                return True
+    return False
+
+
+def interreduce(rules: List[Rule]) -> List[Rule]:
+    """Collapse a confluent-but-not-minimal system to its reduced form:
+    drop any rule whose LHS is reducible by another rule (it's derivable,
+    not needed), then simplify every surviving RHS against the rest,
+    iterating to a fixpoint."""
+    rules = list(rules)
+    changed = True
+    while changed:
+        changed = False
+        keep = []
+        for i, r in enumerate(rules):
+            others = rules[:i] + rules[i + 1:]
+            if _lhs_reducible_by_others(r, others):
+                changed = True
+                continue
+            keep.append(r)
+        rules = keep
+        new_rules = []
+        for i, r in enumerate(rules):
+            others = rules[:i] + rules[i + 1:]
+            nrhs, _ = normal_form(r.rhs, others)
+            if nrhs != r.rhs:
+                changed = True
+            new_rules.append(Rule(r.lhs, nrhs, r.origin))
+        rules = new_rules
+    return rules
+
+
+def certify_confluence(rules: List[Rule]) -> None:
+    """Direct, independent check: recompute every critical pair on the
+    FINAL rule set and confirm each side normalizes to the same word.
+    This does not rely on the completion loop's own bookkeeping."""
+    for s, t, desc in critical_pairs(rules):
+        ns, _ = normal_form(s, rules)
+        nt, _ = normal_form(t, rules)
+        if ns != nt:
+            raise ConfluenceCertificationError(
+                f"Unjoinable critical pair survived: {desc} -> {ns} vs {nt}"
+            )
+
+
+def knuth_bendix(rules: List[Rule], cmp: Callable[[tuple, tuple], int], max_iters: int = 200, verbose: bool = True, reduce: bool = True, certify: bool = True) -> List[Rule]:
+    """Execute the Knuth-Bendix completion algorithm with interreduction and certification."""
     rules = list(rules)
     counter = count(1)
     for iteration in range(max_iters):
@@ -139,13 +213,23 @@ def knuth_bendix(rules: List[Rule], cmp: Callable[[tuple, tuple], int], max_iter
                 continue
             lhs, rhs = (ns, nt) if c > 0 else (nt, ns)
             new_rule = Rule(lhs, rhs, origin=f"CP #{next(counter)}: {desc}")
+            if new_rule in rules:   # content-based dedup (see Rule.__eq__)
+                continue
             rules.append(new_rule)
             if verbose:
                 print(f"  [iter {iteration:2d}] New Rule: {str(new_rule):<12} (From {desc})")
             new_rule_added = True
         if not new_rule_added:
             if verbose:
-                print(f"\nConfluence achieved after {iteration} iterations. Total Rules: {len(rules)}.")
+                print(f"\nConfluence achieved after {iteration} iterations. Raw rules: {len(rules)}.")
+            if reduce:
+                rules = interreduce(rules)
+                if verbose:
+                    print(f"After interreduction: {len(rules)} rules.")
+            if certify:
+                certify_confluence(rules)
+                if verbose:
+                    print("Confluence independently certified on final rule set.")
             return rules
     raise CompletionFailure("Failed to converge (infinite system or weak ordering).")
 

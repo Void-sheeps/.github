@@ -2,7 +2,7 @@ import pytest
 from quaternion_confluence import (
     inv, free_reduce, make_shortlex, Rule, rewrite_step, normal_form,
     overlaps, critical_pairs, knuth_bendix, discover_group_elements,
-    format_word
+    format_word, interreduce, certify_confluence, ConfluenceCertificationError
 )
 
 def test_inv():
@@ -44,6 +44,22 @@ def test_rule_repr_and_str():
     assert repr(rule_empty) == "e -> e"
 
 
+def test_rule_equality_and_hash():
+    # origin should not affect equality or hashing
+    rule1 = Rule(('a', 'a'), ('b',), "origin1")
+    rule2 = Rule(('a', 'a'), ('b',), "origin2")
+    rule3 = Rule(('a', 'a'), ('c',), "origin1")
+
+    assert rule1 == rule2
+    assert rule1 != rule3
+    assert hash(rule1) == hash(rule2)
+    assert hash(rule1) != hash(rule3)
+
+    # Test set deduplication
+    s = {rule1, rule2, rule3}
+    assert len(s) == 2
+
+
 def test_rewrite_step_and_normal_form():
     rules = [
         Rule(('a', 'a'), (), "a^2 = 1"),
@@ -61,11 +77,27 @@ def test_rewrite_step_and_normal_form():
 
 
 def test_overlaps():
-    # Suffix-prefix overlap: 'aba' and 'b' -> overlap is 'aba'
-    # Inclusion overlap: 'aba' contains 'b'
-    # Suffix of 'aba' (a) overlaps prefix of 'aba' (a)
-    overlaps_list = list(overlaps(('a', 'b', 'a'), ('a', 'b', 'a')))
-    assert len(overlaps_list) > 0
+    # Suffix-prefix overlaps: proper suffix of l1 equals proper prefix of l2
+    # e.g., l1 = ('a', 'b'), l2 = ('b', 'c')
+    # Overlap is 'abc', with l1 at 0 and l2 at 1
+    l1 = ('a', 'b')
+    l2 = ('b', 'c')
+    res = list(overlaps(l1, l2))
+    assert len(res) == 1
+    amb, p1, p2 = res[0]
+    assert amb == ('a', 'b', 'c')
+    assert p1 == 0
+    assert p2 == 1
+
+    # Inclusions: l2 as substring in l1
+    l1_inc = ('a', 'b', 'c')
+    l2_inc = ('b',)
+    res_inc = list(overlaps(l1_inc, l2_inc))
+    assert len(res_inc) == 1
+    amb_inc, p1_inc, p2_inc = res_inc[0]
+    assert amb_inc == ('a', 'b', 'c')
+    assert p1_inc == 0
+    assert p2_inc == 1
 
 
 def test_critical_pairs():
@@ -81,6 +113,39 @@ def test_critical_pairs():
         if (s == ('c', 'd') and t == ('a', 'e')) or (s == ('a', 'e') and t == ('c', 'd')):
             has_pair = True
     assert has_pair
+
+
+def test_interreduce():
+    # Test minimizing redundant rules
+    # aa -> e, aaaa -> e (redundant)
+    r1 = Rule(('a', 'a'), (), "r1")
+    r2 = Rule(('a', 'a', 'a', 'a'), (), "r2")
+    r3 = Rule(('b',), ('a', 'a'), "r3") # RHS can be simplified to e
+
+    rules = [r1, r2, r3]
+    reduced = interreduce(rules)
+
+    # Should drop r2 since aa already reduces it.
+    # Should simplify r3 RHS to ()
+    assert Rule(('a', 'a'), (), "") in reduced
+    assert Rule(('a', 'a', 'a', 'a'), (), "") not in reduced
+    assert Rule(('b',), (), "") in reduced
+    assert len(reduced) == 2
+
+
+def test_certify_confluence():
+    r1 = Rule(('a', 'a'), (), "r1")
+    # Confluent set should not raise an error
+    certify_confluence([r1])
+
+    # Non-confluent set should raise ConfluenceCertificationError
+    # e.g., ab -> c, bd -> e, without resolving the critical pair (cd, ae)
+    rules = [
+        Rule(('a', 'b'), ('c',), "r1"),
+        Rule(('b', 'd'), ('e',), "r2")
+    ]
+    with pytest.raises(ConfluenceCertificationError):
+        certify_confluence(rules)
 
 
 def test_knuth_bendix_confluence():
@@ -99,7 +164,7 @@ def test_knuth_bendix_confluence():
     ]
 
     initial_rules = [r0, r1, r2] + inv_rules
-    final_rules = knuth_bendix(initial_rules, cmp_fn, verbose=False)
+    final_rules = knuth_bendix(initial_rules, cmp_fn, verbose=False, reduce=True, certify=True)
 
     # After completion, normal_form should be unique for equivalent words
     # e.g., b^2 and a^2 should reduce to the same normal form
@@ -124,7 +189,7 @@ def test_discover_group_elements():
     ]
 
     initial_rules = [r0, r1, r2] + inv_rules
-    final_rules = knuth_bendix(initial_rules, cmp_fn, verbose=False)
+    final_rules = knuth_bendix(initial_rules, cmp_fn, verbose=False, reduce=True, certify=True)
 
     elements = discover_group_elements(['a', 'b'], final_rules, cmp_fn)
     # Q_8 has exactly 8 elements
